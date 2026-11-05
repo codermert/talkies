@@ -500,7 +500,7 @@ final class Cricket {
 
     private static String localTime(String gmt) {
         Date d = parseGmt(gmt);
-        return d == null ? null : new SimpleDateFormat("h:mm a", Locale.US).format(d).toLowerCase(Locale.ROOT);
+        return d == null ? null : new SimpleDateFormat("HH:mm", Locale.US).format(d).toLowerCase(Locale.ROOT);
     }
 
     // ---------------------------------------------------------------- where to watch

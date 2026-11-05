@@ -53,6 +53,7 @@ final class Football {
      * score line (10 characters at most), in menu order.
      */
     static final String[][] LEAGUES = {
+            {"tur.1", "S\u00fcper Lig", "S\u00fcper Lig"},
             {"eng.1", "Premier League", "EPL"}, {"uefa.champions", "Champions League", "UCL"},
             {"esp.1", "LaLiga", "LaLiga"}, {"ger.1", "Bundesliga", "Bundesliga"}, {"ita.1", "Serie A", "Serie A"},
             {"fra.1", "Ligue 1", "Ligue 1"}, {"uefa.europa", "Europa League", "UEL"},
@@ -65,6 +66,7 @@ final class Football {
     /** Each country's default leagues (the World Cup and the Euros join everywhere: they only have matches when on). */
     private static final Map<String, String[]> DEFAULTS = new HashMap<>();
     static {
+        DEFAULTS.put("TR", new String[]{"tur.1", "uefa.champions", "eng.1"});
         DEFAULTS.put("IN", new String[]{"eng.1", "uefa.champions", "ind.1"});
         DEFAULTS.put("GB", new String[]{"eng.1", "uefa.champions", "sco.1"});
         DEFAULTS.put("IE", new String[]{"eng.1", "uefa.champions"});
@@ -171,6 +173,9 @@ final class Football {
         if (running) return;
         List<String> on = leagues();
         if (on.isEmpty()) return;
+        // A new set of leagues (a new default after an update, say): fetch now, not when the last list goes stale.
+        String sig = String.join(",", on);
+        if (!sig.equals(prefs.getString("sig", ""))) prefs.edit().putString("sig", sig).remove("ok_at").remove("try_at").apply();
         long now = System.currentTimeMillis();
         boolean full = now - prefs.getLong("ok_at", 0) >= FULL_MS;
         String live = prefs.getString("live", "");  // "league@date,…" with a match on or about to start
@@ -338,7 +343,7 @@ final class Football {
         m.status = o.optString("status");
         m.name = m.full1 + " v " + m.full2;
         m.start = m.live || m.ended ? null
-                : new SimpleDateFormat("h:mm a", Locale.US).format(new Date(o.optLong("at"))).toLowerCase(Locale.ROOT);
+                : new SimpleDateFormat("HH:mm", Locale.US).format(new Date(o.optLong("at"))).toLowerCase(Locale.ROOT);
         if (!m.live && !m.ended && m.status.isEmpty()) {
             // Not today: say which day ("Sat 4:30 pm").
             SimpleDateFormat day = new SimpleDateFormat("yyyyMMdd", Locale.US);
