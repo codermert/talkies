@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Talkies settings → Keys and location → Send from your phone: the page a phone opens from the QR code, to paste the
- * TMDB key, the CricketData key and the weather area instead of typing them with the remote. Its address is
+ * TMDB key and the weather area instead of typing them with the remote. Its address is
  * http://(the TV's address on the home network):(a free port)/(a one-time random token). It takes one form (one
  * POST), has the TV check each key with its service, answers with the result and stops; after 5 minutes it stops
  * anyway. Plain HTTP, since a phone can't check a certificate for a LAN address; it listens only on that address, and
@@ -39,6 +39,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Its other job (Talkies settings → Wallpaper → From your phone): a page to pick a photo, which the phone itself crops
  * to the TV's 16:9 and re-encodes as a 1920 × 1080 JPEG (so it arrives small, without the photo's location or other
  * details), then sends as the one POST.
+ *
+ * And a third (Talkies settings → Screensaver message): two short lines for the screensaver.
  */
 final class PhonePage {
     private static final String TAG = "GlassPhonePage";
@@ -47,7 +49,7 @@ final class PhonePage {
     interface Listener {
         /** A phone sent the form: the TV checks it now. */
         void checking();
-        /** Checks and saves what was filled in ("tmdb", "cricket", "location"; empty ones left out): a line for each. */
+        /** Checks and saves what was filled in ("tmdb", "location"; empty ones left out): a line for each. */
         List<String> accept(Map<String, String> fields);
         /** The page stopped: after the form, after 5 minutes (expired) or close(). Called once. */
         void closed(boolean expired);
@@ -68,9 +70,20 @@ final class PhonePage {
     private final Listener listener;
     private final AtomicBoolean taken = new AtomicBoolean();
     private final AtomicInteger answering = new AtomicInteger();
+    /** For a non-private address: the TV's subnet, the only one answered (address as an int, mask); null: any. */
+    private final int[] subnet;
     private volatile boolean closed;
 
     PhonePage(InetAddress lan, Listener listener) throws IOException { this(lan, false, listener); }
+
+    /** The message page, with the message as it is now ("" for none); null on the other pages. */
+    private String message;
+
+    static PhonePage forMessage(InetAddress lan, String current, Listener listener) throws IOException {
+        PhonePage p = new PhonePage(lan, false, listener);
+        p.message = current == null ? "" : current;
+        return p;
+    }
 
     /** What the photo is cropped for, on the photo page: "the TV screen", or an app's tile. */
     private String fitFor = "the TV screen";
@@ -86,6 +99,7 @@ final class PhonePage {
         byte[] random = new byte[12];
         new SecureRandom().nextBytes(random);
         path = "/" + Base64.getUrlEncoder().withoutPadding().encodeToString(random);
+        subnet = lan.isSiteLocalAddress() ? null : subnet(lan);
         server = new ServerSocket(0, 4, lan);   // port 0: a free one the system picks
         url = "http://" + lan.getHostAddress() + ":" + server.getLocalPort() + path;
         Thread t = new Thread(this::serve, "PhonePage");
@@ -103,8 +117,10 @@ final class PhonePage {
     }
 
     /**
-     * The TV's private IPv4 address (10/8, 172.16/12, 192.168/16) on its Wi-Fi or Ethernet, the active network first;
-     * never a VPN's (a phone on the Wi-Fi can't reach it) nor a public one (anyone could). Null: no page.
+     * The TV's IPv4 address on its Wi-Fi or Ethernet, the active network first; never a VPN's (a phone on the Wi-Fi
+     * can't reach it). A private one (10/8, 172.16/12, 192.168/16) if there is one, else any other the router handed
+     * out (some home networks use other ranges, #20): the page then answers only phones on the TV's own subnet, so even
+     * a public address isn't open to the internet. Null: no page.
      */
     @SuppressWarnings("deprecation")   // getAllNetworks: still there
     static InetAddress lanAddress(Context c) {
@@ -113,6 +129,7 @@ final class PhonePage {
             if (cm == null) return null;
             Network active = cm.getActiveNetwork();
             List<Network> networks = new ArrayList<>();
+            InetAddress other = null;   // a non-private address, if that's all there is
             if (active != null) networks.add(active);
             for (Network n : cm.getAllNetworks()) if (!n.equals(active)) networks.add(n);
             for (Network n : networks) {
@@ -125,9 +142,13 @@ final class PhonePage {
                 if (link == null) continue;
                 for (LinkAddress a : link.getLinkAddresses()) {
                     InetAddress ip = a.getAddress();
-                    if (ip instanceof Inet4Address && ip.isSiteLocalAddress()) return ip;
+                    if (!(ip instanceof Inet4Address)) continue;
+                    if (ip.isSiteLocalAddress()) return ip;
+                    if (other == null && !ip.isLoopbackAddress() && !ip.isLinkLocalAddress() && !ip.isAnyLocalAddress()) other = ip;
                 }
             }
+            if (other != null) Log.i(TAG, "No private address: using the network's own, for its subnet only");
+            return other;
         } catch (RuntimeException e) {
             Log.w(TAG, "No address: " + e);
         }
@@ -153,6 +174,10 @@ final class PhonePage {
                     continue;
                 }
                 requests++;
+                if (subnet != null && !onSubnet(socket.getInetAddress())) {   // not a phone on the TV's own network
+                    socket.close();
+                    continue;
+                }
                 // Each connection on its own thread, a few at most: a browser's idle preconnection doesn't hold up the page.
                 if (answering.incrementAndGet() > MAX_ANSWERING) {
                     answering.decrementAndGet();
@@ -169,6 +194,30 @@ final class PhonePage {
             close();
             listener.closed(expired);
         }
+    }
+
+    /** The address's subnet, from its interface's prefix length; /24 if the interface doesn't say. */
+    private static int[] subnet(InetAddress lan) {
+        int prefix = 24;
+        try {
+            java.net.NetworkInterface nif = java.net.NetworkInterface.getByInetAddress(lan);
+            if (nif != null) for (java.net.InterfaceAddress a : nif.getInterfaceAddresses()) {
+                if (lan.equals(a.getAddress()) && a.getNetworkPrefixLength() > 0 && a.getNetworkPrefixLength() <= 32) prefix = a.getNetworkPrefixLength();
+            }
+        } catch (IOException ignored) {
+            // Keep /24.
+        }
+        int mask = prefix == 32 ? -1 : ~(-1 >>> prefix);
+        return new int[]{ipv4(lan) & mask, mask};
+    }
+
+    private boolean onSubnet(InetAddress client) {
+        return client instanceof Inet4Address && (ipv4(client) & subnet[1]) == subnet[0];
+    }
+
+    private static int ipv4(InetAddress a) {
+        byte[] b = a.getAddress();
+        return (b[0] & 0xFF) << 24 | (b[1] & 0xFF) << 16 | (b[2] & 0xFF) << 8 | (b[3] & 0xFF);
     }
 
     private void answer(Socket socket) {
@@ -195,7 +244,8 @@ final class PhonePage {
             return false;
         }
         if (method.equals("GET") || method.equals("HEAD")) {
-            respond(out, "200 OK", "text/html; charset=utf-8", method.equals("HEAD") ? new byte[0] : wallpaper ? photoForm() : form());
+            respond(out, "200 OK", "text/html; charset=utf-8", method.equals("HEAD") ? new byte[0]
+                    : wallpaper ? photoForm() : message != null ? messageForm() : form());
             return false;
         }
         if (!method.equals("POST")) {
@@ -231,7 +281,14 @@ final class PhonePage {
         }
         String form = new String(body, StandardCharsets.US_ASCII);
         Map<String, String> fields = new LinkedHashMap<>();
-        for (String name : new String[]{"tmdb", "cricket", "location"}) {
+        if (message != null) {   // both lines, empty ones too: sending two empty lines clears the message
+            fields.put("line1", field(form, "line1").trim());
+            fields.put("line2", field(form, "line2").trim());
+            listener.checking();
+            respond(out, "200 OK", "text/html; charset=utf-8", result(listener.accept(fields)));
+            return true;
+        }
+        for (String name : new String[]{"tmdb", "location"}) {
             String v = field(form, name).trim();
             if (!v.isEmpty()) fields.put(name, v);
         }
@@ -294,7 +351,7 @@ final class PhonePage {
 
     // ---------------------------------------------------------------- the pages
 
-    /** Three fields, each optional: fill in what you have. */
+    /** Two fields, each optional: fill in what you have. */
     private byte[] form() {
         StringBuilder b = top();
         b.append("<p>Fill in what you have; an empty box leaves that setting as it is.</p>")
@@ -302,8 +359,6 @@ final class PhonePage {
                 .append(box("tmdb", "TMDB key", "For the Trending and New picks. Free at "
                         + "<a href=\"https://www.themoviedb.org/settings/api\" target=_blank rel=noreferrer>themoviedb.org → Settings → API</a>: "
                         + "the API Key or the API Read Access Token.", true))
-                .append(box("cricket", "CricketData key", "For live cricket scores. Free at "
-                        + "<a href=\"https://cricketdata.org\" target=_blank rel=noreferrer>cricketdata.org</a>.", true))
                 .append(box("location", "Weather location", "A town or area, like “Camden, London”, or latitude,longitude.", false))
                 .append("<button>Send to the TV</button></form><p class=s>")
                 .append("It all stays on your TV. This page works once, for 5 minutes.</p>");
@@ -335,6 +390,22 @@ final class PhonePage {
                 .append("const r=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'image/jpeg'},body:blob});")
                 .append("document.open();document.write(await r.text());document.close()}catch(e){")
                 .append("m.textContent='Couldn\\'t reach the TV. Is your phone on the same Wi-Fi?';b.disabled=false}};</script>");
+        return bottom(b);
+    }
+
+    /** Two lines of 22, the board's width, filled in with the message as it is. */
+    private byte[] messageForm() {
+        String[] now = (message + "\n").split("\n", -1);
+        StringBuilder b = top();
+        b.append("<p>Up to two short lines for the screensaver: “Dinner at 8”, “Happy birthday Asha”. ")
+                .append("Leave both empty to remove it.</p>")
+                .append("<form method=post action=\"").append(path).append("\">");
+        for (int i = 1; i <= 2; i++) {
+            b.append("<label for=line").append(i).append(">Line ").append(i).append("</label><input id=line").append(i)
+                    .append(" name=line").append(i).append(" maxlength=22 autocomplete=off value=\"").append(esc(now[i - 1].trim())).append("\">");
+        }
+        b.append("<button>Send to the TV</button></form><p class=s>")
+                .append("The Board screensaver shows letters, numbers, emoji and . , : ' ! ? - / & + % ( ) # @. This page works once, for 5 minutes.</p>");
         return bottom(b);
     }
 

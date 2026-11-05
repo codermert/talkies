@@ -60,6 +60,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -86,12 +88,12 @@ public class HomeActivity extends Activity {
     private static final int P_CONTROL = 0, P_INPUTS = 1, P_WIFI = 2, P_SETTINGS = 3, P_BELL = 4;
     private static final String[] TAB_IDS = {RecentStore.TAB, Trending.TRENDING, Trending.INDIA, Discover.POPULAR, Discover.UPCOMING, Discover.ARTISTS};
     private static final int TAB_INDIA = 2, TAB_POPULAR = 3, TAB_UPCOMING = 4, TAB_ARTISTS = 5;
-    private static final int TAB_TRENDING = 1, MIN_CONTINUE = 10, MAX_CONTINUE = 16, MAX_YOUTUBE = 2;
-    private static final int GRID_COLS = 6;
+    private static final int TAB_TRENDING = 1, MAX_CONTINUE = 16, MAX_YOUTUBE = 2, MAX_YOUTUBE_RECENT = 4;
+    private static final long DAY_MS = 24 * 3600_000L;
     /** How many apps the dock holds (Talkies settings → Dock size); the tiles shrink or grow to fit. */
-    private static final int[] DOCK_SIZES = {5, 6, 7, 8, 9, 10};
+    private static final int[] DOCK_SIZES = {4, 5, 6, 7, 8, 9, 10};
     // Geometry (dp, on a 960 × 540 dp screen).
-    private static final int DOCK_MAX_W = 146, DOCK_GAP = 12, ALL_BUTTON = 44, GRID_TILE_W = 133, GRID_TILE_H = 75, GRID_GAP_X = 16,
+    private static final int DOCK_MAX_W = 146, DOCK_4_W = 198, DOCK_GAP = 12, ALL_BUTTON = 44, GRID_WIDTH = 878, GRID_GAP_X = 16,
             GRID_GAP_Y = 18;
     // Channel rows, below the dock: header, a row of cards, the focused card's title and description.
     private static final int CHAN_TOP = 548, CHAN_ROW_H = 212, CH_W = 200, CH_H = 112, CH_GAP = 18, CRICKET_W = 280;
@@ -103,7 +105,13 @@ public class HomeActivity extends Activity {
 
     private View root;
     private Backdrop backdrop;
+    /** Lite effects (Talkies settings → Effects): no glow, and focus and scrolling jump instead of gliding. */
+    private boolean lite;
+    /** Talkies settings' At power-on row, to come back to once you've chosen. */
+    private View powerOnRow;
     private FrameLayout page, dockBand;
+    /** All apps across (Talkies settings → All apps size), and the size of its tiles in dp. */
+    private int gridCols = 6, gridTileW = 133, gridTileH = 75;
     private LinearLayout dock, grid, menu, channelsBox;
     private android.widget.ScrollView menuScroll;
     private TextView title, info, credit, allAppsLabel, moveHint;
@@ -265,6 +273,8 @@ public class HomeActivity extends Activity {
 
         root = findViewById(R.id.root);
         backdrop = findViewById(R.id.backdrop);
+        lite = liteEffects();
+        backdrop.setLite(lite);
         forYouHead = findViewById(R.id.for_you_head);
         bigClock = findViewById(R.id.big_clock);
         bigTime = findViewById(R.id.big_time);
@@ -278,6 +288,8 @@ public class HomeActivity extends Activity {
         getWindow().setBackgroundDrawable(null);   // the backdrop covers the screen: don't paint it black first
         page = findViewById(R.id.page);
         dockBand = findViewById(R.id.dock_band);
+        // Rows rebuilt or a new size: what's cut off may have changed without the page moving.
+        findViewById(R.id.page).addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> fadeCutOff());
         dock = findViewById(R.id.dock);
         grid = findViewById(R.id.grid);
         menu = findViewById(R.id.menu);
@@ -292,6 +304,7 @@ public class HomeActivity extends Activity {
         picksHint = findViewById(R.id.picks_hint);
         pickCounter = findViewById(R.id.pick_counter);
         ring = findViewById(R.id.ring);
+        ring.setAlways(prefs.getBoolean("focus_ring", false));
         tabs = new TextView[]{findViewById(R.id.tab_recent), findViewById(R.id.tab_trending), findViewById(R.id.tab_india),
                 findViewById(R.id.tab_best), findViewById(R.id.tab_upcoming), findViewById(R.id.tab_artists)};
         icons = new ImageView[]{findViewById(R.id.icon_cc), findViewById(R.id.icon_inputs), findViewById(R.id.icon_wifi),
@@ -319,9 +332,7 @@ public class HomeActivity extends Activity {
         dockBand.addView(dockLabel, dl);
         ((LinearLayout) dock).setPadding(0, 0, 0, px(20));
 
-        // Banners are prepared at the size of the largest focused tile: an All apps tile at 110%, or the dock's
-        // largest (five apps) at 114%.
-        AppEntry.setBannerSize(px(Math.max(GRID_TILE_W * 1.10f, DOCK_MAX_W * 1.14f)), px(Math.max(GRID_TILE_H * 1.10f, DOCK_MAX_W * 9 / 16f * 1.14f)));
+        applyTileSizes();
         AppEntry.customDir = new File(getExternalFilesDir(null), "tiles");
         trending = new Trending(this);
         discover = new Discover(this);
@@ -330,6 +341,7 @@ public class HomeActivity extends Activity {
         bing = new Bing(this, background);
         cricket = new Cricket(this);
         football = new Football(this);
+        applySports();
         score = findViewById(R.id.score);
         weatherLine = weather.cached();
         day = isDayNow();
@@ -346,9 +358,7 @@ public class HomeActivity extends Activity {
         dockIdx = Math.min(prefs.getInt("last_dock_col", 0), Math.max(0, dockCount - 1));
         root.post(() -> {
             focusDock(dockIdx);
-            String open = getIntent().getStringExtra(RemoteKeys.EXTRA_OPEN);
-            if (RemoteKeys.INPUTS.equals(open)) openInputs();
-            else if (RemoteKeys.RECENTS.equals(open)) openRecents();
+            openFromKey(getIntent().getStringExtra(RemoteKeys.EXTRA_OPEN));
         });
     }
 
@@ -370,14 +380,14 @@ public class HomeActivity extends Activity {
                 t.band = 0x94FFFFFF; t.bandStroke = 0xF2FFFFFF;
                 t.scrimTop = 0x8CF5F6F8; t.scrimMid = 0x33EBEEF2; t.scrimBottom = 0xA6E2E5EA;
                 t.menuBg = 0xFFFFFFFF; t.menuStroke = 0x14000000; t.menuFocusBg = 0xFF1D1D1F; t.menuFocusText = 0xFFFFFFFF;
-                t.tileBg = 0xFFD9DCE1; t.ambientAlpha = 0.22f;
+                t.tileBg = 0xFFD9DCE1; t.ambientAlpha = 0.5f;
             } else {
                 t.bgTop = 0xFF121419; t.bgBottom = 0xFF08090C; t.text = 0xFFF5F5F7; t.text2 = 0xFFA1A1A6;
                 t.iconBg = 0x1AFFFFFF; t.iconStroke = 0x1FFFFFFF; t.iconFocusBg = 0xFFF5F5F7; t.iconFocusFg = 0xFF111113;
                 t.band = 0x12FFFFFF; t.bandStroke = 0x1FFFFFFF;
                 t.scrimTop = 0x5908090C; t.scrimMid = 0x2608090C; t.scrimBottom = 0xB308090C;
                 t.menuBg = 0xFF1C1C1F; t.menuStroke = 0x2EFFFFFF; t.menuFocusBg = 0xFFF5F5F7; t.menuFocusText = 0xFF111113;
-                t.tileBg = 0xFF232326; t.ambientAlpha = 0.30f;
+                t.tileBg = 0xFF232326; t.ambientAlpha = 0.65f;
             }
             return t;
         }
@@ -392,6 +402,7 @@ public class HomeActivity extends Activity {
         bigAmPm.setTextColor(theme.text);
         bigDate.setTextColor(theme.text);
         bigWeather.setTextColor(theme.text2);
+        bigWeather.setCompoundDrawableTintList(ColorStateList.valueOf(theme.text2));
         meters.setColor(theme.text);
         bigRule.setBackgroundColor((theme.text2 & 0x00FFFFFF) | 0x66000000);
         allAppsLabel.setTextColor(theme.text);
@@ -582,6 +593,7 @@ public class HomeActivity extends Activity {
         info.setVisibility(View.GONE);
         float k = forYou ? 1f : 1.6f;
         bigWeather.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12 * k);
+        weatherIcon();
         bigTime.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 42 * k);
         bigAmPm.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15 * k);
         bigDate.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14 * k);
@@ -594,6 +606,19 @@ public class HomeActivity extends Activity {
         ((ViewGroup.MarginLayoutParams) bigClock.getLayoutParams()).topMargin = px(forYou ? 26 : 34);
         bigClock.requestLayout();
         styleTop();
+    }
+
+    /** The weather line's icon, sized to its capitals and drawn in its colour (the text's tint). */
+    private void weatherIcon() {
+        int res = Weather.icon(weatherLine, weather.isDay());  // the sun's, not the look's
+        android.graphics.drawable.Drawable d = res == 0 ? null : getDrawable(res);
+        if (d != null) {
+            int size = Math.round(bigWeather.getTextSize() * 1.15f);
+            d.setBounds(0, 0, size, size);
+        }
+        bigWeather.setCompoundDrawablesRelative(d, null, null, null);
+        bigWeather.setCompoundDrawablePadding(Math.round(bigWeather.getTextSize() * 0.45f));
+        bigWeather.setCompoundDrawableTintList(ColorStateList.valueOf(bigWeather.getCurrentTextColor()));
     }
 
     /** "1:05 PM · Wed 21 Oct · 27° Showers", the time a little stronger. */
@@ -612,7 +637,8 @@ public class HomeActivity extends Activity {
         bigAmPm.setVisibility(View.GONE);
         bigDate.setText(DateFormat.format("EEEE  d MMMM", now));
         String city = cityName();
-        bigWeather.setText(weatherLine == null ? "" : (city == null ? "" : city + "  ·  ") + weatherLine);
+        bigWeather.setText(weatherLine == null ? "" : (city == null ? "" : city + "  \u00b7  ") + weatherLine);
+        weatherIcon();
         if (meters.getVisibility() == View.VISIBLE) meters.update();
         bigWeather.setVisibility(weatherLine == null ? View.GONE : View.VISIBLE);
         List<String[]> days = weather.forecast(true);
@@ -622,16 +648,44 @@ public class HomeActivity extends Activity {
         updateScore();
     }
 
-    /** Control Center → Live scores: "both" (the default), "cricket", "football" or "off". */
-    private String scores() { return prefs.getString("scores", "both"); }
-    private List<Cricket.Match> cricketShown() { return scores().equals("both") || scores().equals("cricket") ? matches : new ArrayList<>(); }
-    private List<Cricket.Match> footballShown() { return scores().equals("both") || scores().equals("football") ? footballMatches : new ArrayList<>(); }
+    /** How deep the menus were when Country opened, so choosing one (from either list) goes back to Talkies settings. */
+    private int countryDepth;
+    /** The first countries offered (Talkies settings → Country): where Talkies is used most; More countries has all. */
+    private static final String[] COUNTRIES = {"IN", "US", "GB", "CA", "AU", "AE", "SG", "SA", "DE", "FR", "ES", "IT",
+            "NL", "TR", "BR", "MX", "JP", "KR", "IE", "NZ", "ZA", "PK", "BD", "LK", "NP"};
+
+    /** Talkies settings → Sports: the ids, with the names shown. */
+    private static final String[][] SPORTS = {{"cricket", "Cricket"}, {"football", "Football"}, {"nba", "NBA"}, {"nfl", "NFL"}};
+    /** "Soccer" in the US and Canada, where football is the NFL; "Football" everywhere else. Set in applySports. */
+    private String soccer = "Football";
+
+    /** A sport's name as shown here: football is soccer in North America. */
+    private String sportName(String[] sp) { return sp[0].equals("football") ? soccer : sp[1]; }
+
+    /** The sports whose scores show (Talkies settings → Sports); worked out in applySports. */
+    private final Set<String> sportsOn = new java.util.LinkedHashSet<>();
+
+    /**
+     * The sports that are on (Football.sportsOn), and what football is called here. Tells Football.
+     */
+    private void applySports() {
+        sportsOn.clear();
+        String cc = Region.country(this);
+        soccer = cc.equals("US") || cc.equals("CA") ? "Soccer" : "Football";
+        sportsOn.addAll(Football.sportsOn(this));
+        football.setSports(sportsOn.contains("football"), sportsOn.contains("nfl"), sportsOn.contains("nba"));
+    }
+
+    private boolean anyFootball() { return sportsOn.contains("football") || sportsOn.contains("nba") || sportsOn.contains("nfl"); }
+    private List<Cricket.Match> cricketShown() { return sportsOn.contains("cricket") ? matches : new ArrayList<>(); }
+    private List<Cricket.Match> footballShown() { return anyFootball() ? footballMatches : new ArrayList<>(); }
 
     /**
      * "● LIVE  IND 245/4 (42.3) v AUS" or "● LIVE  67'  ·  ARS 2–1 CHE", or today's next match, or today's result;
      * hidden when there's none. A live match wins, cricket before football.
      */
     private void updateScore() {
+        if (showPlaying()) return;
         List<Cricket.Match> c = cricketShown(), f = footballShown();
         Cricket.Match m = !c.isEmpty() && c.get(0).live ? c.get(0) : !f.isEmpty() && f.get(0).live ? f.get(0)
                 : !c.isEmpty() ? c.get(0) : !f.isEmpty() ? f.get(0) : null;
@@ -649,7 +703,7 @@ public class HomeActivity extends Activity {
                 b.setSpan(new ForegroundColorSpan(0xFFFF453A), 0, 6, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 b.append(m.league).append("  ·  ").append(m.status).append("  ·  ").append(result);
             } else if (!m.ended) {
-                b.append(m.league).append("  ·  ").append(m.short1).append(" v ").append(m.short2)
+                b.append(m.league).append("  ·  ").append(m.short1).append(" ").append(m.vs).append(" ").append(m.short2)
                         .append(m.start == null ? "" : "  ·  " + m.start);
             } else {
                 b.append(m.league).append("  ·  ").append(result).append("  ·  ").append(m.status);
@@ -675,6 +729,50 @@ public class HomeActivity extends Activity {
         score.setVisibility(View.VISIBLE);
     }
 
+    // ---------------------------------------------------------------- now playing on Home (an idea from Home Deck, MIT)
+
+    /** The player the line under the icons follows while it plays; null when nothing is playing. */
+    private MediaController playingShown;
+    private final MediaController.Callback playingChanged = new MediaController.Callback() {
+        @Override public void onMetadataChanged(MediaMetadata m) { updateScore(); }
+        @Override public void onPlaybackStateChanged(PlaybackState p) { watchPlaying(); }
+        @Override public void onSessionDestroyed() { watchPlaying(); }
+    };
+
+    /** Follows whatever is playing now (Home showing, each minute, and when the player changes), else nothing. */
+    private void watchPlaying() {
+        MediaController now = inFront ? NowPlaying.current(this) : null;
+        if (now != null && !NowPlaying.playing(now)) now = null;
+        if (playingShown != null && (now == null || !now.getSessionToken().equals(playingShown.getSessionToken()))) {
+            playingShown.unregisterCallback(playingChanged);
+            playingShown = null;
+        }
+        if (now != null && playingShown == null) {
+            playingShown = now;
+            now.registerCallback(playingChanged, new Handler(Looper.getMainLooper()));
+        }
+        updateScore();
+    }
+
+    /**
+     * "♪  Song  ·  Artist  ·  Spotify" in the score line while something plays, over the scores (they're still in their
+     * rows). The remote's Play/Pause works on it as anywhere. False: nothing playing, the line shows the scores.
+     */
+    private boolean showPlaying() {
+        MediaController s = playingShown;
+        if (s == null || !NowPlaying.playing(s) || NowPlaying.title(s).isEmpty()) return false;
+        SpannableStringBuilder b = new SpannableStringBuilder("♪  ");
+        b.append(NowPlaying.title(s));
+        String a = NowPlaying.artist(s);
+        if (!a.isEmpty()) b.append("  ·  ").append(a);
+        b.append("  ·  ").append(appLabel(s.getPackageName()));
+        score.setText(b);
+        score.setTextColor(theme.text);
+        score.setVisibility(View.VISIBLE);
+        credit.setAlpha(0f);
+        return true;
+    }
+
     private void onMatches(List<Cricket.Match> list) {
         matches = list;
         updateScore();
@@ -688,7 +786,9 @@ public class HomeActivity extends Activity {
     }
 
     private void onMinute() {
+        weatherLine = weather.cached();   // "Rain around 4 PM" goes once that hour comes
         updateInfo();
+        watchPlaying();
         refreshOnline();
         boolean nowDay = isDayNow();
         if (nowDay != day) { day = nowDay; applyTheme(); }
@@ -698,6 +798,220 @@ public class HomeActivity extends Activity {
 
     /** Appearance from Control Center: Auto (by sunrise and sunset), Light or Dark. */
     private static final String[] APPEARANCE = {"Auto", "Light", "Dark"};
+
+    /**
+     * Effects: "auto" (the default) is Lite on a TV with under 1.6 GB of memory, where the glow and gliding motion
+     * cost frames, and Full elsewhere. An idea from Aerial (aerial-tv, MIT), which does the same on low-memory TVs.
+     */
+    private boolean liteEffects() {
+        String e = prefs.getString("effects", "auto");
+        if (!e.equals("auto")) return e.equals("lite");
+        ActivityManager am = getSystemService(ActivityManager.class);
+        ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+        am.getMemoryInfo(mi);
+        return am.isLowRamDevice() || mi.totalMem < 1600L * 1024 * 1024 || prefs.getBoolean("slow_tv", false);
+    }
+
+    /** "Clock", "Wallpaper", "Picks · may be slow"; "· not in use" when the TV has another screensaver. */
+    private String screensaverLabel() {
+        String m = prefs.getString("screensaver", "clock");
+        // One note at most, the one that matters most, so the row's name still fits.
+        if (m.equals("wallpaper") && wallpaperLabel().equals("Off")) return "Wallpaper  ·  none set";
+        if (m.equals("picks") && lowMemory()) return "Picks  ·  may be slow";
+        String l = m.equals("picks") ? "Picks" : m.equals("wallpaper") ? "Wallpaper" : m.equals("board") ? "Board" : "Clock";
+        return screensaverChosen() ? l : l + "  ·  not in use";
+    }
+
+    /** The screensaver message's first words ("Dinner at 8…"), short enough for the row's name to fit; or "None". */
+    private String messageLabel() {
+        String m = Screensaver.message(this);
+        if (m == null) return "None";
+        String first = m.split("\n")[0].trim();
+        return first.length() > 14 || m.contains("\n") ? first.substring(0, Math.min(14, first.length())).trim() + "…" : first;
+    }
+
+    /** When the screensaver dims: "11 PM – 7 AM", or "Off". */
+    private String quietLabel() {
+        switch (prefs.getString("quiet_hours", "23-7")) {
+            case "22-6": return "10 PM – 6 AM  ·  dimmer";
+            case "0-7": return "Midnight – 7 AM  ·  dimmer";
+            case "off": return "Off";
+            default: return "11 PM – 7 AM  ·  dimmer";
+        }
+    }
+
+    /** Screensaver message: two lines typed on the phone (PhonePage's message page), behind a QR code. */
+    private void openPhoneMessage() {
+        java.net.InetAddress lan = PhonePage.lanAddress(this);
+        if (lan == null) {
+            Toast.makeText(this, "The TV isn't on a home Wi-Fi or Ethernet network, so the phone can't reach it", Toast.LENGTH_LONG).show();
+            return;
+        }
+        TextView status = new TextView(this);
+        android.app.AlertDialog[] dialog = new android.app.AlertDialog[1];
+        PhonePage page;
+        try {
+            page = PhonePage.forMessage(lan, Screensaver.message(this), new PhonePage.Listener() {
+                @Override public void checking() { }
+
+                @Override public List<String> accept(Map<String, String> fields) {
+                    String m = (fields.get("line1") + "\n" + fields.get("line2")).trim();
+                    if (m.isEmpty()) prefs.edit().remove("board_message").apply();
+                    else prefs.edit().putString("board_message", m).apply();
+                    String said = m.isEmpty() ? "Message removed." : "Done: it shows on the screensaver now.";
+                    runOnUiThread(() -> {
+                        if (dialog[0] != null) dialog[0].dismiss();
+                        Toast.makeText(HomeActivity.this, said, Toast.LENGTH_SHORT).show();
+                        if (zone == Z_MENU) {   // the row shows the new message, still in focus
+                            int at = menuIdx;
+                            openTalkiesSettings(settingsAt);
+                            focusMenu(Math.min(at, menuItems.size() - 1));
+                        }
+                    });
+                    return java.util.Collections.singletonList(said);
+                }
+
+                @Override public void closed(boolean expired) {
+                    if (expired) runOnUiThread(() -> status.setText("This code has expired. Close it and open Screensaver message again."));
+                }
+            });
+        } catch (java.io.IOException e) {
+            Toast.makeText(this, "Couldn't open the page for your phone", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER_HORIZONTAL);
+        box.setPadding(px(24), px(8), px(24), 0);
+        box.addView(qrCode(page.url), new LinearLayout.LayoutParams(px(180), px(180)));
+        TextView where = new TextView(this);
+        where.setText(page.url);
+        where.setTextSize(12);
+        where.setPadding(0, px(8), 0, 0);
+        box.addView(where);
+        status.setText("Waiting for your phone… The page works once, for 5 minutes.");
+        status.setPadding(0, px(6), 0, 0);
+        box.addView(status);
+        dialog[0] = new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Screensaver message")
+                .setMessage("Scan this with your phone's camera (on the same Wi-Fi as the TV), then type up to two short lines.")
+                .setView(box)
+                .setNegativeButton("Close", null)
+                .setOnDismissListener(d -> page.close())
+                .create();
+        dialog[0].show();
+    }
+
+    /** "App colour" or "Blurred art"; "· not in use" where a wallpaper or Lite effects take its place. */
+    private String backgroundLabel() {
+        String l = prefs.getBoolean("blurred_art", false) ? "Blurred art" : "App colour";
+        return hasWallpaper || lite ? l + "  ·  not in use" : l;
+    }
+
+    /** Whether the TV's screensaver is Talkies' (Settings → Device Preferences → Screen saver). */
+    private boolean screensaverChosen() {
+        String c = Settings.Secure.getString(getContentResolver(), "screensaver_components");
+        return c != null && c.startsWith(getPackageName() + "/");
+    }
+
+    /**
+     * Makes Talkies the TV's screensaver, or puts back the one it replaced. Needs the WRITE_SECURE_SETTINGS grant (false
+     * without it): some TVs, like Sony's with Ambient mode, don't list other apps' screensavers in their settings.
+     */
+    private boolean setScreensaver(boolean talkies) {
+        if (checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return false;
+        String key = "screensaver_components";
+        try {
+            if (talkies) {
+                prefs.edit().putString("screensaver_before", Settings.Secure.getString(getContentResolver(), key)).apply();
+                Settings.Secure.putString(getContentResolver(), key, getPackageName() + "/.Screensaver");
+            } else {
+                Settings.Secure.putString(getContentResolver(), key, prefs.getString("screensaver_before", null));
+            }
+            return true;
+        } catch (SecurityException e) {
+            return false;
+        }
+    }
+
+    /** Without the grant: where it's chosen on the TV, and the one command for a TV that doesn't list Talkies there. */
+    private void openScreensaverHelp() {
+        beginMenu(settingsAt, "TV's screensaver");
+        String[] lines = {"Choose Talkies in the TV's screen saver settings. If they don't list it, run this once from a computer:",
+                "adb shell settings put secure screensaver_components " + getPackageName() + "/.Screensaver"};
+        for (String line : lines) {
+            TextView t = new TextView(this);
+            t.setText(line);
+            t.setTextSize(15);
+            t.setTextColor(theme.text);
+            t.setTypeface(getResources().getFont(R.font.outfit));
+            t.setPadding(px(14), px(5), px(14), px(5));
+            menu.addView(t);
+        }
+        Intent settings = new Intent(Settings.ACTION_DREAM_SETTINGS);
+        if (pm.resolveActivity(settings, 0) != null) addRow("Open the TV's settings", null, () -> start(settings), false);
+        else addRow("OK", null, () -> { }, false);
+        showMenu(640);
+    }
+
+    /** Under 1.6 GB of memory (or Android calls it low-RAM): where Effects' Auto picks Lite. */
+    private boolean lowMemory() {
+        ActivityManager am = getSystemService(ActivityManager.class);
+        ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+        am.getMemoryInfo(mi);
+        return am.isLowRamDevice() || mi.totalMem < 1600L * 1024 * 1024;
+    }
+
+    // ---------------------------------------------------------------- how smooth this TV is (an idea from Home Deck, MIT)
+
+    /** Frames timed while moving with the arrows, in Full effects, until there are enough to judge (once per TV). */
+    private static final int SMOOTH_FRAMES = 240;
+    private final long[] frameGaps = new long[SMOOTH_FRAMES];
+    private int frameCount;
+    private long lastFrameNs, sampleUntil;
+    private final android.view.Choreographer.FrameCallback sampleFrame = new android.view.Choreographer.FrameCallback() {
+        @Override public void doFrame(long ns) {
+            if (lastFrameNs != 0 && frameCount < SMOOTH_FRAMES) frameGaps[frameCount++] = ns - lastFrameNs;
+            lastFrameNs = ns;
+            if (frameCount >= SMOOTH_FRAMES) judgeSmoothness();
+            else if (android.os.SystemClock.uptimeMillis() < sampleUntil) android.view.Choreographer.getInstance().postFrameCallback(this);
+            else lastFrameNs = 0;
+        }
+    };
+
+    /** An arrow press in Auto · Full on a TV not yet judged: time the next half second of frames, while things glide. */
+    private void sampleSmoothness() {
+        if (lite || prefs.contains("slow_tv") || !prefs.getString("effects", "auto").equals("auto")) return;
+        boolean running = android.os.SystemClock.uptimeMillis() < sampleUntil;
+        sampleUntil = android.os.SystemClock.uptimeMillis() + 500;
+        if (!running) {
+            lastFrameNs = 0;
+            android.view.Choreographer.getInstance().postFrameCallback(sampleFrame);
+        }
+    }
+
+    /**
+     * Enough frames: a TV whose typical frame while gliding takes over 25 ms (under 40 a second) is slow, and Auto
+     * switches it to Lite from then on. Decided once; Talkies settings → Effects can still pick Full.
+     */
+    private void judgeSmoothness() {
+        long[] gaps = frameGaps.clone();
+        Arrays.sort(gaps);
+        long median = gaps[SMOOTH_FRAMES / 2];
+        boolean slow = median > 25_000_000L;
+        prefs.edit().putBoolean("slow_tv", slow).apply();
+        Log.i(TAG, "Smoothness: median frame " + median / 100_000 / 10f + " ms" + (slow ? ", slow: Auto is Lite from now" : ""));
+        if (slow) {
+            lite = true;
+            backdrop.setLite(true);
+            updateAmbient();
+        }
+    }
+
+    private String effectsLabel() {
+        String e = prefs.getString("effects", "auto");
+        return e.equals("full") ? "Full" : e.equals("lite") ? "Lite" : liteEffects() ? "Auto · Lite" : "Auto · Full";
+    }
     /** How All apps is arranged (Talkies settings → All apps order). The dock always keeps your order. */
     private static final String[] APPS_ORDER = {"Your order", "Recently opened", "A to Z"};
     private static final int ORDER_YOURS = 0, ORDER_RECENT = 1, ORDER_AZ = 2;
@@ -732,6 +1046,22 @@ public class HomeActivity extends Activity {
                     && !main.getComponent().getClassName().equals(ri.activityInfo.name)) continue;
             if (!seen.add(p)) continue;
             all.add(new AppEntry(ri.activityInfo, String.valueOf(ri.loadLabel(pm)).trim()));
+        }
+        // Phone apps with no TV entry (Chrome, MacroDroid, Speedtest… sideloaded): their tile is made from the icon.
+        // Talkies settings → Phone apps hides them, for TVs that list system screens this way. Idea from @dossantosee.
+        if (prefs.getBoolean("phone_apps", true)) {
+            Intent phone = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+            for (ResolveInfo ri : pm.queryIntentActivities(phone, 0)) {
+                String p = ri.activityInfo.packageName;
+                if (p.equals(getPackageName()) || hidden.contains(p) || !seen.add(p)) continue;
+                all.add(new AppEntry(ri.activityInfo, String.valueOf(ri.loadLabel(pm)).trim(), false));
+            }
+        }
+        // Inputs you put on Home (Talkies settings → Inputs on Home): tiles that switch the TV to them.
+        Set<String> onHome = homeInputs();
+        if (!onHome.isEmpty()) {
+            Drawable glyph = getDrawable(R.drawable.ic_input);
+            for (Port port : shownPorts()) if (onHome.contains(port.id)) all.add(new AppEntry(port.id, port.tile(), port.color, glyph));
         }
         // Your arrangement (hold OK on an app to move it), else dock.xml; the dock fills up to its size.
         int dockSize = dockSize();
@@ -787,11 +1117,25 @@ public class HomeActivity extends Activity {
 
     private void reloadApps() {
         endMove(false);
+        applyTileSizes();
         loadApps();
         buildAppViews();
         if (zone == Z_DOCK) focusDock(Math.min(dockIdx, dockCount - 1));
         else if (zone == Z_ALL) { if (allTile != null) focusAllTile(); else focusDock(dockCount - 1); }
         else if (zone == Z_GRID) focusGrid(Math.min(gridIdx, gridTiles.size() - 1));
+    }
+
+    /**
+     * The All apps grid as chosen, and banners prepared at the size of the largest focused tile: an All apps tile at
+     * 110%, or the dock's at 114%. Only a TV set to the bigger sizes pays for bigger banners.
+     */
+    private void applyTileSizes() {
+        gridCols = prefs.getInt("grid_cols", 6);
+        if (gridCols < 4 || gridCols > 6) gridCols = 6;
+        gridTileW = (GRID_WIDTH - (gridCols - 1) * GRID_GAP_X) / gridCols;
+        gridTileH = Math.round(gridTileW * 9 / 16f);
+        int dockW = dockSize() == 4 ? DOCK_4_W : DOCK_MAX_W;
+        AppEntry.setBannerSize(px(Math.max(gridTileW * 1.10f, dockW * 1.14f)), px(Math.max(gridTileH * 1.10f, dockW * 9 / 16f * 1.14f)));
     }
 
     /** One app tile: its banner (or icon) on a rounded card. */
@@ -836,11 +1180,16 @@ public class HomeActivity extends Activity {
         dock.removeAllViews();
         dockTiles.clear();
         // The dock's apps and, when any are left over, the round All apps button share the band's width: seven
-        // apps are 106 dp wide, five 146, ten 73.
-        boolean more = apps.size() > dockCount;
-        int n = dockSize();
+        // apps are 106 dp wide, five 146, ten 73. Four are 198, too tall for the band, which grows upward to hold them.
+        boolean more = apps.size() > dockCount && prefs.getBoolean("all_apps_button", true);
+        int n = Math.max(1, dockCount);   // the apps it has: with fewer than Dock size, they needn't shrink for empty places
         float inner = getResources().getDisplayMetrics().widthPixels / dp - 40 - 36;
-        float w = Math.min(DOCK_MAX_W, (inner - (more ? n * DOCK_GAP + ALL_BUTTON : (n - 1) * DOCK_GAP)) / n);
+        boolean four = dockSize() == 4;
+        float w = Math.min(four ? DOCK_4_W : DOCK_MAX_W, (inner - (more ? n * DOCK_GAP + ALL_BUTTON : (n - 1) * DOCK_GAP)) / n);
+        ViewGroup.MarginLayoutParams band = (ViewGroup.MarginLayoutParams) dockBand.getLayoutParams();
+        band.height = px(four ? 132 : 104);
+        band.topMargin = px(four ? 386 : 414);
+        dockBand.setLayoutParams(band);
         float h = w * 9 / 16;
         for (int i = 0; i < dockCount; i++) {
             View t = appTile(apps.get(i), w, h);
@@ -860,7 +1209,7 @@ public class HomeActivity extends Activity {
         LinearLayout row = null;
         for (int i = dockCount; i < apps.size(); i++) {
             int g = i - dockCount;
-            if (g % GRID_COLS == 0) {
+            if (g % gridCols == 0) {
                 row = new LinearLayout(this);
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 row.setClipChildren(false);
@@ -868,9 +1217,9 @@ public class HomeActivity extends Activity {
                 if (g > 0) rl.topMargin = px(GRID_GAP_Y);
                 grid.addView(row, rl);
             }
-            View t = appTile(apps.get(i), GRID_TILE_W, GRID_TILE_H);
+            View t = appTile(apps.get(i), gridTileW, gridTileH);
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) t.getLayoutParams();
-            if (g % GRID_COLS > 0) lp.leftMargin = px(GRID_GAP_X);
+            if (g % gridCols > 0) lp.leftMargin = px(GRID_GAP_X);
             row.addView(t, lp);
             gridTiles.add(t);
         }
@@ -890,9 +1239,9 @@ public class HomeActivity extends Activity {
         int gridTop = gridTopDp();
         ((ViewGroup.MarginLayoutParams) allAppsLabel.getLayoutParams()).topMargin = px(gridTop - 40);
         ((ViewGroup.MarginLayoutParams) grid.getLayoutParams()).topMargin = px(gridTop);
-        int rows = (gridTiles.size() + GRID_COLS - 1) / GRID_COLS;
+        int rows = (gridTiles.size() + gridCols - 1) / gridCols;
         ViewGroup.LayoutParams plp = page.getLayoutParams();
-        plp.height = px(gridTop + rows * (GRID_TILE_H + GRID_GAP_Y) + 120);
+        plp.height = px(gridTop + rows * (gridTileH + GRID_GAP_Y) + 120);
         page.setLayoutParams(plp);
         allAppsLabel.requestLayout();
         grid.requestLayout();
@@ -920,9 +1269,10 @@ public class HomeActivity extends Activity {
         // The row with a match being played goes first: Football above Cricket while only football is live.
         boolean footballFirst = !footballRow.isEmpty() && footballRow.get(0).live
                 && (cricketRow.isEmpty() || !cricketRow.get(0).live);
-        if (footballFirst) list.add(scoresRow("football", "Football", footballRow));
+        String sports = sportsTitle(footballRow);
+        if (footballFirst) list.add(scoresRow("football", sports, footballRow));
         if (!cricketRow.isEmpty()) list.add(scoresRow("cricket", "Cricket", cricketRow));
-        if (!footballRow.isEmpty() && !footballFirst) list.add(scoresRow("football", "Football", footballRow));
+        if (!footballRow.isEmpty() && !footballFirst) list.add(scoresRow("football", sports, footballRow));
         list.addAll(apps);
         {
             {
@@ -962,6 +1312,13 @@ public class HomeActivity extends Activity {
                 refocusChannels = false;
             }
         }
+    }
+
+    /** The row's name: "Football" ("Soccer"), or "NBA" or "NFL" when that's all it has, "Sports" when it's a mix. */
+    private String sportsTitle(List<Cricket.Match> list) {
+        Set<String> kinds = new HashSet<>();
+        for (Cricket.Match m : list) kinds.add("at".equals(m.vs) ? m.kind : soccer);
+        return kinds.size() == 1 ? kinds.iterator().next() : "Sports";
     }
 
     /** What a card shows, unchanged by a new score: the match, or the pick itself. */
@@ -1053,6 +1410,8 @@ public class HomeActivity extends Activity {
             LinearLayout track = new LinearLayout(this);
             track.setOrientation(LinearLayout.HORIZONTAL);
             track.setClipChildren(false);
+            // Its padding mustn't clip either: the first card grows past it when focused (else a gap in the ring).
+            track.setClipToPadding(false);
             track.setPadding(px(40), 0, px(960), 0);
             List<View> cards = new ArrayList<>();
             int w = cardW(ch);
@@ -1244,36 +1603,46 @@ public class HomeActivity extends Activity {
 
     /**
      * Continue: what apps put on Android's Watch Next list (Netflix, Prime Video…, opening the right episode) plus what
-     * other apps reported playing, newest first. First the newest title from each app (so one app can't take over the
-     * front of the row), then the rest in order, until there are at least ten cards (up to sixteen).
+     * other apps reported playing, newest first. First the newest title from each app used lately (so one app can't take
+     * over the front of the row), then the rest in order, up to sixteen cards.
      */
     private List<Trending.Pick> continuePicks(List<Trending.Pick> sessions, List<Trending.Pick> watchNext) {
         // Titles you removed (hold OK → Remove from Continue) stay out until the app reports a new episode.
         Set<String> hidden = prefs.getStringSet("hidden_continue", java.util.Collections.emptySet());
+        Set<String> appsOff = prefs.getStringSet("continue_apps_off", java.util.Collections.emptySet());  // Continue apps
         List<Trending.Pick> wnShown = new ArrayList<>();
-        for (Trending.Pick p : watchNext) if (!hidden.contains(continueKey(p))) wnShown.add(p);
+        for (Trending.Pick p : watchNext) if (!hidden.contains(continueKey(p)) && !appsOff.contains(p.pkg)) wnShown.add(p);
         watchNext = wnShown;
         // An app's Watch Next entries (they open the right episode) win over what we saw it play, unless it played
         // something more recently than its newest entry: JioHotstar, for one, doesn't always update Watch Next.
         Map<String, Long> newest = new java.util.HashMap<>();
         for (Trending.Pick p : watchNext) newest.merge(p.pkg, p.at, Math::max);
-        List<Trending.Pick> all = new ArrayList<>(watchNext);
+        List<Trending.Pick> all = new ArrayList<>();
+        Set<String> played = new HashSet<>();
         for (Trending.Pick p : sessions) {
+            if (appsOff.contains(p.pkg)) continue;
             Long wn = newest.get(p.pkg);
-            if (wn == null || p.at > wn) all.add(p);
+            if (wn != null && p.at <= wn) continue;
+            all.add(p);
+            played.add(p.pkg + "\n" + p.title);
         }
+        // The same title from Watch Next is older than what we just saw play: the app hasn't updated it.
+        for (Trending.Pick p : watchNext) if (!played.contains(p.pkg + "\n" + p.title)) all.add(p);
         Collections.sort(all, (a, b) -> Long.compare(b.at, a.at));
-        // YouTube fills up fastest (every video you play), so it gets at most two cards.
+        // YouTube fills up fastest (every video you play), so it gets a few cards for the last two days, two otherwise.
+        long now = System.currentTimeMillis();
         List<Trending.Pick> capped = new ArrayList<>();
         int youtube = 0;
         for (Trending.Pick p : all) {
-            if ("com.google.android.youtube.tv".equals(p.pkg) && ++youtube > MAX_YOUTUBE) continue;
+            if ("com.google.android.youtube.tv".equals(p.pkg)
+                    && ++youtube > (now - p.at < 2 * DAY_MS ? MAX_YOUTUBE_RECENT : MAX_YOUTUBE)) continue;
             capped.add(p);
         }
         List<Trending.Pick> out = new ArrayList<>(), rest = new ArrayList<>();
         Set<String> seen = new HashSet<>();
-        for (Trending.Pick p : capped) (seen.add(p.pkg) ? out : rest).add(p);
-        for (Trending.Pick p : rest) if (out.size() < MIN_CONTINUE) out.add(p);
+        // An app last used months ago doesn't go ahead of what you watched today.
+        for (Trending.Pick p : capped) (now - p.at < 14 * DAY_MS && seen.add(p.pkg) ? out : rest).add(p);
+        out.addAll(rest);
         return out.size() > MAX_CONTINUE ? new ArrayList<>(out.subList(0, MAX_CONTINUE)) : out;
     }
 
@@ -1367,10 +1736,14 @@ public class HomeActivity extends Activity {
         boolean show = forYou && rowPicks.isEmpty() && !skeletonShown;
         picksHint.setVisibility(show ? View.VISIBLE : View.GONE);
         if (!show) return;
-        picksHint.setText(Keys.read(this, Keys.TMDB) == null
+        boolean radar = Trending.RADAR.equals(trending.source());
+        picksHint.setText(trending.source() == null
                 ? "Trending and new picks need a free TMDB key: Control Center → Talkies settings → Keys and location"
                 : trending.matchedApps() == 0
-                ? "Trending shows what's on your streaming apps, and none Talkies knows is installed. With YouTube installed, it shows trailers instead."
+                ? "Trending shows what's on your streaming apps, and none Talkies knows is installed."
+                        + (radar ? "" : " With YouTube installed, it shows trailers instead.")
+                : !trending.languages().isEmpty()
+                ? "Nothing in " + languagesLabel() + " on your apps here right now. More languages: Talkies settings → Picks languages."
                 : "Picks appear here once Talkies is online. Shows you watch show up under Continue.");
     }
 
@@ -1625,11 +1998,15 @@ public class HomeActivity extends Activity {
             // Only the cards that are, or are about to be, on screen: the rest wait until the row slides toward them.
             if (i < anchor - 2 || i > anchor + 6) continue;
             if (i == anchor + 1 || i == anchor + 2) Images.prefetch(p.image, 1);   // the next large cards
-            if (usePoster) loadInto(poster, p.poster, 1);
-            poster.animate().alpha(usePoster ? 1f : 0f).setDuration(250).start();
-            if (p.image == null || !p.image.isFile()) continue;
-            if (large) loadInto(back, p.image, 1);
-            else if (!usePoster) loadInto(back, p.image, 2);
+            if (usePoster) loadInto(poster, p.poster, 1, null);
+            boolean hasImage = p.image != null && p.image.isFile();
+            // Becoming the large card: the poster stays until the landscape picture is decoded (it was let go while
+            // covered), else the card shows blank for a moment on slower TVs.
+            if (large && hasImage) loadInto(back, p.image, 1, () -> poster.animate().alpha(0f).setDuration(250).start());
+            else poster.animate().alpha(usePoster ? 1f : 0f).setDuration(250).start();
+            if (!hasImage) continue;
+            if (large) continue;
+            else if (!usePoster) loadInto(back, p.image, 2, null);
             else {
                 // Covered by the poster: let it go once the fade is done.
                 final ImageView b = back;
@@ -1675,18 +2052,28 @@ public class HomeActivity extends Activity {
 
     /**
      * Shows `file` at 1/`sample` size, unless it's already showing: at once when it was decoded before, else after
-     * a background decode, fading in over the card's placeholder.
+     * a background decode, fading in over the card's placeholder; then runs `shown` (if any), also when it was
+     * already there or couldn't be decoded.
      */
-    private void loadInto(ImageView v, File file, int sample) {
+    private void loadInto(ImageView v, File file, int sample, Runnable shown) {
         String want = file.getName() + "@" + sample;
-        if (want.equals(v.getTag(R.id.img_state))) return;
+        if (want.equals(v.getTag(R.id.img_state))) {
+            // Showing, or on its way from an earlier call.
+            if (shown != null) whenShown(v, want, shown, 0);
+            return;
+        }
         v.setTag(R.id.img_state, want);
         Bitmap hit = Images.peek(file, sample);
         if (hit != null) {
             showBitmap(v, hit, false);
+            if (shown != null) shown.run();
             return;
         }
-        Images.load(file, sample, b -> { if (b != null && want.equals(v.getTag(R.id.img_state))) showBitmap(v, b, true); });
+        Images.load(file, sample, b -> {
+            if (!want.equals(v.getTag(R.id.img_state))) return;
+            if (b != null) showBitmap(v, b, true);
+            if (shown != null) shown.run();
+        });
     }
 
     private void showBitmap(ImageView v, Bitmap b, boolean fade) {
@@ -1765,6 +2152,12 @@ public class HomeActivity extends Activity {
         root.postDelayed(prefetchTask, 900);
     }
 
+    /** Runs `shown` once `v` has its picture (checked every frame or so, for a second at most). */
+    private void whenShown(ImageView v, String want, Runnable shown, int tries) {
+        if (v.getDrawable() != null || tries > 60 || !want.equals(v.getTag(R.id.img_state))) shown.run();
+        else v.postDelayed(() -> whenShown(v, want, shown, tries + 1), 16);
+    }
+
     private void stylePickText(View item) {
         TextView name = item.findViewWithTag("name"), meta = item.findViewWithTag("meta");
         if (name != null) name.setTextColor(theme.text);
@@ -1785,17 +2178,73 @@ public class HomeActivity extends Activity {
      * picks from apps that aren't installed. Your own wallpaper replaces it.
      */
     private void updateAmbient() {
-        if (hasWallpaper) return;
+        if (hasWallpaper) { shownAmbient = null; return; }
+        root.removeCallbacks(ambientArt);
+        ambientGen++;
         AppEntry a = null;
+        Trending.Pick pick = null;
         if (zone == Z_DOCK && dockIdx < apps.size()) a = apps.get(dockIdx);
         else if (zone == Z_GRID && dockCount + gridIdx < apps.size()) a = apps.get(dockCount + gridIdx);
-        else if ((zone == Z_PICKS || zone == Z_TABS) && !rowPicks.isEmpty())
-            a = appFor(rowPicks.get(Math.min(picksRow.anchor(), rowPicks.size() - 1)).pkg);
+        else if ((zone == Z_PICKS || zone == Z_TABS) && !rowPicks.isEmpty()) {
+            pick = rowPicks.get(Math.min(picksRow.anchor(), rowPicks.size() - 1));
+            a = appFor(pick.pkg);
+        }
         else if (zone == Z_CHAN && chanIdx < chanRows.size()) {
             List<Trending.Pick> items = chanRows.get(chanIdx).items;
-            if (!items.isEmpty()) a = appFor(items.get(Math.min(chanCol[chanIdx], items.size() - 1)).pkg);
+            if (!items.isEmpty()) {
+                pick = items.get(Math.min(chanCol[chanIdx], items.size() - 1));
+                a = appFor(pick.pkg);
+            }
         }
+        // Talkies settings → Background → Blurred art: a pick's own picture, blurred, once you settle on it. Otherwise,
+        // and for an app or a card with no picture, its app's colour.
+        if (!lite && prefs.getBoolean("blurred_art", false) && pick != null && pick.image != null && pick.image.isFile()) {
+            ambientFile = pick.image;
+            root.postDelayed(ambientArt, AMBIENT_WAIT_MS);
+            return;
+        }
+        shownAmbient = null;
         if (a != null) backdrop.setGlow(a.glowColor(pm));
+    }
+
+    private static final long AMBIENT_WAIT_MS = 220;
+    /** Bumped whenever focus moves, so a picture decoded for a card you've left is dropped. */
+    private int ambientGen;
+    private File ambientFile, shownAmbient;
+    private final Runnable ambientArt = () -> {
+        final File f = ambientFile;
+        if (f == null || f.equals(shownAmbient)) return;
+        final int gen = ambientGen;
+        background.execute(() -> {
+            Bitmap small = tinyPicture(f);
+            runOnUiThread(() -> {
+                if (gen != ambientGen || small == null || isDestroyed()) return;
+                shownAmbient = f;
+                backdrop.setAmbient(small, theme.ambientAlpha);
+            });
+        });
+    };
+
+    /** The picture about 48 px wide: stretched across the screen, that's the blur, for next to no memory or drawing. */
+    private static Bitmap tinyPicture(File f) {
+        try {
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(f.getPath(), o);
+            if (o.outWidth <= 0 || o.outHeight <= 0) return null;
+            o.inSampleSize = 1;
+            while (o.outWidth / (o.inSampleSize * 2) >= 96) o.inSampleSize *= 2;
+            o.inJustDecodeBounds = false;
+            o.inPreferredConfig = Bitmap.Config.RGB_565;
+            Bitmap b = BitmapFactory.decodeFile(f.getPath(), o);
+            if (b == null) return null;
+            Bitmap small = Bitmap.createScaledBitmap(b, 48, Math.max(1, 48 * b.getHeight() / b.getWidth()), true);
+            if (small != b) b.recycle();
+            return small;
+        } catch (RuntimeException | OutOfMemoryError e) {
+            Log.w(TAG, "No background from a picture: " + e);
+            return null;
+        }
     }
 
     private AppEntry appFor(String pkg) {
@@ -1852,7 +2301,12 @@ public class HomeActivity extends Activity {
     /** Grows the focused card or tile (and shrinks the previous one); the ring sits on it. */
     private void setFocus(View v, float scale, float radiusDp) {
         View old = focusedView;
-        if (old != null && old != v) scaleTo(old, 1f);
+        if (old != null && old != v) {
+            scaleTo(old, 1f);
+            old.animate().translationZ(0).setDuration(lite ? 0 : 150).start();
+        }
+        // Lifted on a soft shadow (no ring, like Plume): it shows on white and bright tiles too.
+        if (v != null && v != old) v.animate().translationZ(px(14)).setDuration(lite ? 0 : 150).start();
         focusedView = v;
         ringRadius = px(radiusDp);
         ring.animate().alpha(v == null ? 0f : 1f).setDuration(150).start();
@@ -1901,6 +2355,12 @@ public class HomeActivity extends Activity {
     private void doMotion(long now) {
         float dt = motionNanos == 0 ? 1 / 60f : Math.min(0.05f, (now - motionNanos) / 1e9f);
         motionNanos = now;
+        if (lite) {
+            // Straight to where each is going: one frame instead of a dozen.
+            pageSpring.snap(pageSpring.target);
+            for (Spring sp : chanSprings) sp.snap(sp.target);
+            for (Spring sp : scaleSprings.values()) sp.snap(sp.target);
+        }
         boolean moving = pageSpring.step(dt);
         page.setTranslationY(-pageSpring.value);
         for (int i = 0; i < chanSprings.size() && i < chanScrolls.size(); i++) {
@@ -1927,7 +2387,31 @@ public class HomeActivity extends Activity {
     private void scrollPage(float y) {
         if (Math.abs(y - pageSpring.target) < 1) return;
         pageSpring.target = y;
+        fadeCutOff();
         startMotion();
+    }
+
+    /**
+     * Fades what the screen would cut off: the row above peeking in at the top, the next one at the bottom. Rows that fit
+     * stay, and so does the row you're on, whatever fits. An idea from dossantosee (discussion #17).
+     */
+    private void fadeCutOff() {
+        if (root.getHeight() == 0) return;
+        float top = pageSpring.target, bottom = top + root.getHeight();
+        View on = zone == Z_DOCK || zone == Z_ALL ? dockBand : zone == Z_PICKS || zone == Z_TABS ? picksRow
+                : zone == Z_CHAN ? channelsBox.getChildAt(chanIdx) : zone == Z_GRID ? grid.getChildAt(gridIdx / gridCols) : null;
+        // At the top of the page everything up there stays, even on a TV where the dock only just fits.
+        for (View v : new View[]{forYouHead, picksRow, dockBand}) fade(v, top <= 0 || v == on, top, bottom);
+        fade(allAppsLabel, false, top, bottom);
+        for (int i = 0; i < channelsBox.getChildCount(); i++) fade(channelsBox.getChildAt(i), channelsBox.getChildAt(i) == on, top, bottom);
+        for (int i = 0; i < grid.getChildCount(); i++) fade(grid.getChildAt(i), grid.getChildAt(i) == on, top, bottom);
+    }
+
+    private void fade(View v, boolean keep, float top, float bottom) {
+        float y = 0;
+        for (View p = v; p != null && p != page; p = p.getParent() instanceof View ? (View) p.getParent() : null) y += p.getTop();
+        boolean whole = y >= top - 1 && y + v.getHeight() <= bottom + 1;
+        v.animate().alpha(keep || whole ? 1f : 0f).setDuration(180).start();
     }
 
     private void focusTop(int i) {
@@ -1960,7 +2444,7 @@ public class HomeActivity extends Activity {
         updateAmbient();
         updateCounter();
         restartBar();
-        setFocus(picksRow.anchorCard(), 1.02f, 20);
+        setFocus(picksRow.anchorCard(), 1.04f, 20);
         styleTop();
         followRing(moved ? 360 : 220);
     }
@@ -1989,9 +2473,9 @@ public class HomeActivity extends Activity {
         if (gridTiles.isEmpty()) return;
         zone = Z_GRID;
         gridIdx = Math.max(0, Math.min(i, gridTiles.size() - 1));
-        int row = gridIdx / GRID_COLS;
+        int row = gridIdx / gridCols;
         int gridTop = gridTopDp();
-        float rowTop = gridTop + row * (GRID_TILE_H + GRID_GAP_Y);
+        float rowTop = gridTop + row * (gridTileH + GRID_GAP_Y);
         scrollPage(px(Math.max(gridTop - 96, rowTop - 190)));
         setFocus(gridTiles.get(gridIdx), moving ? 1.18f : 1.10f, 14);
         updateAmbient();
@@ -2027,9 +2511,9 @@ public class HomeActivity extends Activity {
     }
 
     /** Dock column (0–6) → grid column (0–5) and back, by position across the screen. */
-    private int dockToGridCol(int c) { return Math.round(c * (GRID_COLS - 1) / (float) Math.max(1, dockCount - 1)); }
+    private int dockToGridCol(int c) { return Math.round(c * (gridCols - 1) / (float) Math.max(1, dockCount - 1)); }
 
-    private int gridToDockCol(int c) { return Math.round(c * Math.max(0, dockCount - 1) / (float) (GRID_COLS - 1)); }
+    private int gridToDockCol(int c) { return Math.round(c * Math.max(0, dockCount - 1) / (float) (gridCols - 1)); }
 
     // ---------------------------------------------------------------- keys
 
@@ -2044,6 +2528,7 @@ public class HomeActivity extends Activity {
         boolean back = k == KeyEvent.KEYCODE_BACK || k == KeyEvent.KEYCODE_ESCAPE;
         if (!select && !nav && !back) return super.dispatchKeyEvent(e);
         lastKeyAt = android.os.SystemClock.uptimeMillis();
+        if (nav && e.getAction() == KeyEvent.ACTION_DOWN) sampleSmoothness();
         // OK and Back act when let go, so a release whose press went to another app must do nothing here: an app
         // that closes as OK goes down (Netflix → Exit) would otherwise have its OK's release open the focused tile,
         // the same app, again.
@@ -2054,7 +2539,7 @@ public class HomeActivity extends Activity {
             if (!ours) return true;
         }
         boolean onApp = zone == Z_DOCK || zone == Z_GRID || (zone == Z_MENU && menuMode == MENU_CHANNELS)
-                || continueCard() != null || (zone == Z_TOP && iconIdx == P_SETTINGS);
+                || continueCard() != null || matchCard() != null || (zone == Z_TOP && iconIdx == P_SETTINGS);
         // Holding OK on an app opens its menu, on a Continue card the card's menu, and in the Channels editor
         // picks the row up (a timer, or the remote's long-press signal, whichever comes first).
         if (select && e.getAction() == KeyEvent.ACTION_DOWN) {
@@ -2133,7 +2618,7 @@ public class HomeActivity extends Activity {
                 if (left) focusDock(dockTiles.size() - 1);
                 else if (up) { if (hasPicks) focusPicks(picksRow.anchor()); else focusTop(iconIdx); }
                 else if (down && !chanRows.isEmpty()) focusChan(0, chanCol[0]);
-                else if (down) focusGrid(GRID_COLS - 1);
+                else if (down) focusGrid(gridCols - 1);
                 break;
             case Z_CHAN: {
                 int n = chanRows.get(chanIdx).items.size(), c = chanCol[chanIdx];
@@ -2146,13 +2631,13 @@ public class HomeActivity extends Activity {
                 break;
             }
             case Z_GRID: {
-                int row = gridIdx / GRID_COLS, col = gridIdx % GRID_COLS;
+                int row = gridIdx / gridCols, col = gridIdx % gridCols;
                 if (left && col > 0) focusGrid(gridIdx - 1);
-                else if (right && col < GRID_COLS - 1 && gridIdx + 1 < gridTiles.size()) focusGrid(gridIdx + 1);
+                else if (right && col < gridCols - 1 && gridIdx + 1 < gridTiles.size()) focusGrid(gridIdx + 1);
                 else if (up && row == 0 && !chanRows.isEmpty()) focusChan(chanRows.size() - 1, chanCol[chanRows.size() - 1]);
                 else if (up && row == 0) focusDock(gridToDockCol(col));
-                else if (up) focusGrid(gridIdx - GRID_COLS);
-                else if (down && (row + 1) * GRID_COLS < gridTiles.size()) focusGrid(Math.min(gridIdx + GRID_COLS, gridTiles.size() - 1));
+                else if (up) focusGrid(gridIdx - gridCols);
+                else if (down && (row + 1) * gridCols < gridTiles.size()) focusGrid(Math.min(gridIdx + gridCols, gridTiles.size() - 1));
                 break;
             }
         }
@@ -2163,16 +2648,7 @@ public class HomeActivity extends Activity {
      * also on devices without SystemUI's shortcut, like the Google TV Streamer), else SystemUI's Somnambulator.
      * Null where neither exists: Control Center leaves the row out. The voice action idea is from tvOS Launcher.
      */
-    private Intent screensaverIntent() {
-        // In a task of its own: it's part of the TV's Settings app, and in Settings' own task a settings page left open
-        // in the background would be what waking the TV shows, instead of Talkies.
-        Intent voice = new Intent("com.google.android.pano.action.SLEEP")
-                .addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
-        ResolveInfo r = pm.resolveActivity(voice, 0);
-        if (r != null && r.activityInfo != null && !r.activityInfo.name.contains("EmptyStub")) return voice;
-        Intent dream = new Intent(Intent.ACTION_MAIN).setClassName("com.android.systemui", "com.android.systemui.Somnambulator");
-        return pm.resolveActivity(dream, 0) != null ? dream : null;
-    }
+    private Intent screensaverIntent() { return RemoteKeys.screensaver(this); }
 
     /** Where focus is: changes whenever a move took it somewhere, so a press at an end makes no sound. */
     private String focusSignature() {
@@ -2245,6 +2721,7 @@ public class HomeActivity extends Activity {
             showDiscoverQr(p);
             return;
         }
+        if ("watchnext".equals(p.kind)) RecentStore.noteOpened(this, p);
         if (p.intentUri != null) {
             try {
                 startActivity(Intent.parseUri(p.intentUri, Intent.URI_INTENT_SCHEME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), fromTile());
@@ -2264,7 +2741,7 @@ public class HomeActivity extends Activity {
         }
         Intent i = p.pkg == null ? null : pm.getLeanbackLaunchIntentForPackage(p.pkg);
         if (i != null) startFromTile(i);
-        else if (p.extra instanceof Cricket.Match && ((Cricket.Match) p.extra).football) Toast.makeText(this, "Talkies doesn't know where to watch football yet", Toast.LENGTH_SHORT).show();
+        else if (p.extra instanceof Cricket.Match && ((Cricket.Match) p.extra).football) Toast.makeText(this, "Talkies doesn't know where to watch " + ("at".equals(((Cricket.Match) p.extra).vs) ? "this game" : soccer.toLowerCase(Locale.ROOT)) + " yet", Toast.LENGTH_SHORT).show();
         else if (p.extra instanceof Cricket.Match) Toast.makeText(this, "None of your apps has a card for this match", Toast.LENGTH_SHORT).show();
     }
 
@@ -2363,13 +2840,13 @@ public class HomeActivity extends Activity {
             else if (k == KeyEvent.KEYCODE_DPAD_RIGHT && ai < dockCount - 1) target = ai + 1;
             else if (k == KeyEvent.KEYCODE_DPAD_DOWN && gridSize > 0) target = dockCount + Math.min(dockToGridCol(ai), gridSize - 1);
         } else {
-            int g = ai - dockCount, row = g / GRID_COLS, col = g % GRID_COLS;
+            int g = ai - dockCount, row = g / gridCols, col = g % gridCols;
             if (k == KeyEvent.KEYCODE_DPAD_LEFT && col > 0) target = ai - 1;
-            else if (k == KeyEvent.KEYCODE_DPAD_RIGHT && col < GRID_COLS - 1 && ai + 1 < apps.size()) target = ai + 1;
+            else if (k == KeyEvent.KEYCODE_DPAD_RIGHT && col < gridCols - 1 && ai + 1 < apps.size()) target = ai + 1;
             else if (k == KeyEvent.KEYCODE_DPAD_UP && row == 0) target = Math.min(gridToDockCol(col), dockCount - 1);
-            else if (k == KeyEvent.KEYCODE_DPAD_UP) { target = ai - GRID_COLS; swap = false; }
-            else if (k == KeyEvent.KEYCODE_DPAD_DOWN && (row + 1) * GRID_COLS < gridSize) {
-                target = Math.min(ai + GRID_COLS, apps.size() - 1);
+            else if (k == KeyEvent.KEYCODE_DPAD_UP) { target = ai - gridCols; swap = false; }
+            else if (k == KeyEvent.KEYCODE_DPAD_DOWN && (row + 1) * gridCols < gridSize) {
+                target = Math.min(ai + gridCols, apps.size() - 1);
                 swap = false;
             }
         }
@@ -2441,6 +2918,7 @@ public class HomeActivity extends Activity {
         menuMode = MENU_PLAIN;
         menuScroll.animate().cancel();
         menu.removeAllViews();
+        menu.setPadding(px(8), px(8), px(8), px(8));  // What's new widens it
         menuScroll.setBackground(rounded(theme.menuBg, theme.menuStroke, 20));
         menuScroll.scrollTo(0, 0);
         if (heading != null) {
@@ -2518,6 +2996,12 @@ public class HomeActivity extends Activity {
         for (int r = 0; r < menuItems.size(); r++) {
             View row = menuItems.get(r);
             boolean f = r == i;
+            if ("note".equals(row.getTag())) {
+                // A paragraph (What's new): the focused one reads bright, the rest dimmed, like Plume's.
+                row.setBackground(null);
+                ((TextView) row.findViewById(R.id.input_label)).setTextColor(f ? theme.text : theme.text2);
+                continue;
+            }
             row.setBackground(f ? rounded(theme.menuFocusBg, 0, 12) : null);
             ((TextView) row.findViewById(R.id.input_label)).setTextColor(f ? theme.menuFocusText : theme.text);
             ((TextView) row.findViewById(R.id.input_status)).setTextColor(f ? (theme.menuFocusText & 0x00FFFFFF) | 0x99000000 : theme.text2);
@@ -2552,17 +3036,7 @@ public class HomeActivity extends Activity {
         List<TvInputInfo> hdmi = new ArrayList<>(), av = new ArrayList<>(), tuners = new ArrayList<>();
         TvInputInfo tuner = null;
         Map<String, TvInputInfo> cec = new java.util.HashMap<>();  // port id → the HDMI-CEC device behind it
-        if (tim != null) {
-            for (TvInputInfo i : tim.getTvInputList()) {
-                if (i.getParentId() != null) { cec.put(i.getParentId(), i); continue; } // devices behind a port: use the port
-                switch (i.getType()) {
-                    case TvInputInfo.TYPE_HDMI: hdmi.add(i); break;
-                    case TvInputInfo.TYPE_COMPOSITE: case TvInputInfo.TYPE_COMPONENT:
-                    case TvInputInfo.TYPE_SCART: case TvInputInfo.TYPE_SVIDEO: case TvInputInfo.TYPE_VGA: av.add(i); break;
-                    case TvInputInfo.TYPE_TUNER: tuners.add(i); break;
-                }
-            }
-        }
+        sortInputs(tim, hdmi, av, tuners, cec);
         // App channels (Zee5, Play Movies…) also register as tuners; prefer the TV's own one.
         String vendor = hdmi.isEmpty() ? null : hdmi.get(0).getServiceInfo().packageName;
         for (TvInputInfo i : tuners) {
@@ -2570,11 +3044,11 @@ public class HomeActivity extends Activity {
             if (i.getServiceInfo().packageName.equals(vendor)) { tuner = i; break; }
             if (tuner == null && system) tuner = i;
         }
-        Collections.sort(hdmi, (a, b) -> label(a).compareTo(label(b)));
         int n = 1, hidden = 0, firstEmpty = -1;
         boolean named = false;
         for (TvInputInfo i : hdmi) {
-            String name = fixLabel(label(i), "HDMI " + n++);
+            String name = inputName(i.getId(), fixLabel(label(i), "HDMI " + n++));
+            if (inputHidden(i.getId())) continue;
             if (!connected(tim, i)) {
                 if (!all) { hidden++; continue; }
                 if (firstEmpty < 0) firstEmpty = menuItems.size();
@@ -2591,7 +3065,8 @@ public class HomeActivity extends Activity {
         }
         n = 1;
         for (TvInputInfo i : av) {
-            String name = av.size() == 1 ? "AV" : fixLabel(label(i), "AV " + n++);
+            String name = inputName(i.getId(), av.size() == 1 ? "AV" : fixLabel(label(i), "AV " + n++));
+            if (inputHidden(i.getId())) continue;
             if (!connected(tim, i)) {
                 if (!all) { hidden++; continue; }
                 if (firstEmpty < 0) firstEmpty = menuItems.size();
@@ -2599,7 +3074,7 @@ public class HomeActivity extends Activity {
             addInput(name, tim, i, passthrough(i));
         }
         final TvInputInfo tunerInfo = tuner;
-        addRow("Live TV", null, () -> {
+        if (!inputHidden(LIVE_TV)) addRow(inputName(LIVE_TV, "Live TV"), null, () -> {
             if (tunerInfo != null) {
                 Intent v = new Intent(Intent.ACTION_VIEW);
                 v.setDataAndType(TvContract.buildChannelsUriForInput(tunerInfo.getId()), "vnd.android.cursor.dir/channel");
@@ -2614,6 +3089,258 @@ public class HomeActivity extends Activity {
         showMenu(named ? 340 : 220);
         // Opened from More inputs: start on the first port it brought back.
         if (all && firstEmpty > 0 && prefs.getBoolean("inputs_connected_only", false)) focusMenu(firstEmpty);
+    }
+
+    /** The TV's inputs by kind: HDMI ports in order, AV ports, tuners, and port ID → the HDMI-CEC device behind it. */
+    private void sortInputs(TvInputManager tim, List<TvInputInfo> hdmi, List<TvInputInfo> av, List<TvInputInfo> tuners,
+                            Map<String, TvInputInfo> cec) {
+        if (tim == null) return;
+        for (TvInputInfo i : tim.getTvInputList()) {
+            if (i.getParentId() != null) { cec.put(i.getParentId(), i); continue; } // devices behind a port: use the port
+            switch (i.getType()) {
+                case TvInputInfo.TYPE_HDMI: hdmi.add(i); break;
+                case TvInputInfo.TYPE_COMPOSITE: case TvInputInfo.TYPE_COMPONENT:
+                case TvInputInfo.TYPE_SCART: case TvInputInfo.TYPE_SVIDEO: case TvInputInfo.TYPE_VGA: av.add(i); break;
+                case TvInputInfo.TYPE_TUNER: tuners.add(i); break;
+            }
+        }
+        Collections.sort(hdmi, (a, b) -> label(a).compareTo(label(b)));
+    }
+
+    /** An HDMI or AV port, named as Inputs names it ("HDMI 2"), with the device it says is plugged in, if any. */
+    private static final class Port {
+        final String id, name, device;
+        final int color;
+
+        Port(String id, String name, String device, int color) {
+            this.id = id;
+            this.name = name;
+            this.device = device;
+            this.color = color;
+        }
+
+        /** Its tile's name: the device's ("PlayStation 5") when it has one. */
+        String tile() { return device != null ? device : name; }
+
+        /** "HDMI 2 · PlayStation 5", for lists of ports. */
+        String row() { return device != null ? name + "  ·  " + device : name; }
+    }
+
+    /** The HDMI ports, then the AV ones. Empty on a streaming box, which has none. */
+    private List<Port> ports() {
+        TvInputManager tim = getSystemService(TvInputManager.class);
+        List<TvInputInfo> hdmi = new ArrayList<>(), av = new ArrayList<>(), tuners = new ArrayList<>();
+        Map<String, TvInputInfo> cec = new java.util.HashMap<>();
+        sortInputs(tim, hdmi, av, tuners, cec);
+        List<Port> out = new ArrayList<>();
+        int n = 1;
+        for (TvInputInfo i : hdmi) {
+            String name = fixLabel(label(i), "HDMI " + n++);
+            TvInputInfo behind = cec.get(i.getId());
+            Devices d = cecStatus(tim, behind) != null ? identify(behind) : null;
+            // A name you gave it wins over the device's own ("Living room box", not "Set-top box").
+            String own = inputNames().optString(i.getId(), null);
+            out.add(new Port(i.getId(), own != null ? own : name, own != null || d == null ? null : d.name,
+                    d == null ? Devices.PLAIN : d.color));
+        }
+        n = 1;
+        for (TvInputInfo i : av) out.add(new Port(i.getId(), inputName(i.getId(), av.size() == 1 ? "AV" : fixLabel(label(i), "AV " + n++)), null, Devices.PLAIN));
+        return out;
+    }
+
+    /** The ports Inputs shows: all but the ones you hid (Talkies settings → Edit inputs). */
+    private List<Port> shownPorts() {
+        List<Port> out = new ArrayList<>();
+        for (Port p : ports()) if (!inputHidden(p.id)) out.add(p);
+        return out;
+    }
+
+    // ---------------------------------------------------------------- incoming (an idea from Home Deck, MIT)
+
+    /** Which ports had something switched on, as last seen: a port that turns on after this gets the card. */
+    private final Map<String, Boolean> livePorts = new java.util.HashMap<>();
+    private static final long INCOMING_SETTLE_MS = 2000, INCOMING_SHOW_MS = 15_000;
+    private final Runnable checkIncoming = this::checkIncoming;
+    /** Closes the incoming card if it's still the menu that's open (menuGen), untouched. */
+    private int incomingGen = -1;
+
+    private final TvInputManager.TvInputCallback inputWatch = new TvInputManager.TvInputCallback() {
+        @Override public void onInputStateChanged(String inputId, int state) { incomingSoon(); }
+        @Override public void onInputAdded(String inputId) { incomingSoon(); }
+        @Override public void onInputRemoved(String inputId) { incomingSoon(); }
+        @Override public void onInputUpdated(String inputId) { incomingSoon(); }
+    };
+
+    /** While Talkies is on screen: what's switched on now is the baseline, and changes are checked from then on. */
+    private void watchInputs(boolean on) {
+        TvInputManager tim = getSystemService(TvInputManager.class);
+        if (tim == null || ports().isEmpty()) return;
+        if (on) {
+            livePorts.clear();
+            livePorts.putAll(livePortsNow(tim));
+            tim.registerCallback(inputWatch, new Handler(Looper.getMainLooper()));
+        } else {
+            tim.unregisterCallback(inputWatch);
+            root.removeCallbacks(checkIncoming);
+        }
+    }
+
+    /** HDMI-CEC devices announce themselves in a burst: wait for it to settle. */
+    private void incomingSoon() {
+        root.removeCallbacks(checkIncoming);
+        root.postDelayed(checkIncoming, INCOMING_SETTLE_MS);
+    }
+
+    /**
+     * Each HDMI port: true when something on it is switched on. A device that talks HDMI-CEC says so itself (on, not
+     * standby); for one that doesn't, a signal on the port is the sign.
+     */
+    private Map<String, Boolean> livePortsNow(TvInputManager tim) {
+        Map<String, TvInputInfo> behind = new java.util.HashMap<>();
+        List<TvInputInfo> hdmi = new ArrayList<>(), av = new ArrayList<>(), tuners = new ArrayList<>();
+        sortInputs(tim, hdmi, av, tuners, behind);
+        Map<String, Boolean> out = new java.util.HashMap<>();
+        for (TvInputInfo i : hdmi) {
+            TvInputInfo dev = behind.get(i.getId());
+            int state;
+            try { state = tim.getInputState(dev != null ? dev.getId() : i.getId()); } catch (Exception e) { continue; }
+            out.put(i.getId(), state == TvInputManager.INPUT_STATE_CONNECTED);
+        }
+        return out;
+    }
+
+    /** A port just switched on, with Talkies on screen and nothing open: offer to switch to it. */
+    private void checkIncoming() {
+        TvInputManager tim = getSystemService(TvInputManager.class);
+        if (tim == null) return;
+        Map<String, Boolean> now = livePortsNow(tim);
+        String turnedOn = null;
+        for (Map.Entry<String, Boolean> e : now.entrySet()) {
+            if (e.getValue() && !Boolean.TRUE.equals(livePorts.get(e.getKey())) && !inputHidden(e.getKey())) turnedOn = e.getKey();
+        }
+        livePorts.clear();
+        livePorts.putAll(now);
+        if (turnedOn == null || !prefs.getBoolean("incoming", true) || !inFront || zone == Z_MENU || moving) return;
+        for (Port p : ports()) if (p.id.equals(turnedOn)) { showIncoming(p, tim); return; }
+    }
+
+    /** "PlayStation 5 is on": Switch to HDMI 2, or Not now. Goes away by itself after 15 seconds. */
+    private void showIncoming(Port port, TvInputManager tim) {
+        TvInputInfo info = null;
+        for (TvInputInfo i : tim.getTvInputList()) if (i.getId().equals(port.id)) info = i;
+        if (info == null) return;
+        Log.i(TAG, "Incoming: " + port.row());
+        beginMenu(P_INPUTS, null);
+        menuTitle((port.device != null ? port.device : port.name) + " is on");
+        addRow("Switch to " + port.name, null, passthrough(info), false);
+        addRow("Not now", null, () -> { }, false);
+        menuClosed = () -> focusDock(dockIdx);
+        setFocus(null, 1f, 0);
+        showMenu(360);
+        int gen = menuGen;
+        incomingGen = gen;
+        root.postDelayed(() -> { if (zone == Z_MENU && menuGen == gen && incomingGen == gen) closeMenu(); }, INCOMING_SHOW_MS);
+    }
+
+    /** Live TV's key in Edit inputs' names and hidden list. */
+    private static final String LIVE_TV = "live_tv";
+
+    /** Names you gave inputs (Talkies settings → Edit inputs), by input ID. */
+    private JSONObject inputNames() {
+        try { return new JSONObject(prefs.getString("input_names", "{}")); } catch (Exception e) { return new JSONObject(); }
+    }
+
+    private String inputName(String id, String fallback) { return inputNames().optString(id, fallback); }
+
+    private boolean inputHidden(String id) {
+        return Arrays.asList(prefs.getString("hidden_inputs", "").split(",")).contains(id);
+    }
+
+    private void setInputHidden(String id, boolean hide) {
+        Set<String> h = new HashSet<>(Arrays.asList(prefs.getString("hidden_inputs", "").split(",")));
+        h.remove("");
+        if (hide) h.add(id); else h.remove(id);
+        prefs.edit().putString("hidden_inputs", String.join(",", h)).apply();
+    }
+
+    private void setInputName(String id, String name) {
+        JSONObject names = inputNames();
+        try {
+            if (name == null || name.isEmpty()) names.remove(id); else names.put(id, name);
+        } catch (Exception ignored) { }
+        prefs.edit().putString("input_names", names.toString()).apply();
+    }
+
+    /**
+     * Talkies settings → Edit inputs: each port and Live TV; OK on one names it or hides it (a soundbar's ARC port
+     * you never watch, Live TV without an aerial). Hidden ones stay out of Inputs, Inputs on Home and the incoming
+     * card. An idea from Home Deck (MIT).
+     */
+    private void openEditInputs() {
+        beginMenu(settingsAt, "Edit inputs  ·  name or hide");
+        for (Port p : ports()) addRow(p.row(), inputHidden(p.id) ? "Hidden" : null, () -> openEditInput(p.id, p.row()), false);
+        addRow(inputName(LIVE_TV, "Live TV"), inputHidden(LIVE_TV) ? "Hidden" : null, () -> openEditInput(LIVE_TV, inputName(LIVE_TV, "Live TV")), false);
+        showMenu(360);
+    }
+
+    private void openEditInput(String id, String title) {
+        beginMenu(settingsAt, title);
+        String own = inputNames().optString(id, null);
+        addRow("Name", own != null ? own : "Its own", () -> askText("Name for " + title,
+                "What Inputs and its tile on Home call it, like \"Living room box\". Remove goes back to its own name.",
+                own, false, own != null, text -> {
+                    setInputName(id, text);
+                    Toast.makeText(this, text.isEmpty() ? "Back to its own name" : "Named " + text, Toast.LENGTH_SHORT).show();
+                    reloadApps();
+                    back();
+                }), true);
+        final View[] shown = new View[1];
+        shown[0] = addRow("In Inputs", inputHidden(id) ? "Hidden" : "Shown", () -> {
+            boolean hide = !inputHidden(id);
+            setInputHidden(id, hide);
+            setStatus(shown[0], hide ? "Hidden" : "Shown");
+            reloadApps();
+        }, true);
+        showMenu(360);
+    }
+
+    /** Inputs you put on Home, by input ID. */
+    private Set<String> homeInputs() {
+        String s = prefs.getString("home_inputs", "");
+        return s.isEmpty() ? new HashSet<>() : new HashSet<>(Arrays.asList(s.split(",")));
+    }
+
+    /**
+     * Talkies settings → Inputs on Home: OK puts a port on Home as a tile, in the dock's first spot, so the console or
+     * set-top box on it is one press away; OK again takes it off. An idea from Aerial (aerial-tv, MIT).
+     */
+    private void openHomeInputs() {
+        beginMenu(settingsAt, "Inputs on Home  ·  OK puts one in the dock");
+        Set<String> on = homeInputs();
+        for (Port port : shownPorts()) {
+            final View[] row = new View[1];
+            row[0] = addRow(port.row(), on.contains(port.id) ? "On Home" : null, () -> {
+                int at = menuIdx;
+                setHomeInput(port.id, !homeInputs().contains(port.id));
+                setStatus(row[0], homeInputs().contains(port.id) ? "On Home" : null);
+                focusMenu(at);
+            }, true);
+        }
+        showMenu(400);
+    }
+
+    private void setHomeInput(String id, boolean show) {
+        Set<String> on = homeInputs();
+        if (show) on.add(id); else on.remove(id);
+        SharedPreferences.Editor e = prefs.edit().putString("home_inputs", String.join(",", on));
+        if (show) {
+            // The dock's first spot: the dock as it is, with the input in front.
+            StringBuilder d = new StringBuilder(AppEntry.INPUT + id);
+            for (int i = 0; i < dockCount && i < apps.size(); i++) d.append(',').append(apps.get(i).pkg);
+            e.putString("order_dock", d.toString());
+        }
+        e.apply();
+        reloadApps();
     }
 
     private static boolean connected(TvInputManager tim, TvInputInfo info) {
@@ -2749,27 +3476,113 @@ public class HomeActivity extends Activity {
 
     // ---------------------------------------------------------------- live scores
 
-    private String scoresLabel() {
-        switch (scores()) {
-            case "cricket": return "Cricket";
-            case "football": return "Football";
-            case "off": return "Off";
-            default: return "Cricket and football";
+    /** "Automatic (India)", or the country you chose. */
+    private String countryLabel() {
+        String chosen = Region.chosen(this);
+        return chosen == null ? "Automatic (" + Region.fullName(Region.here(this)) + ")" : Region.fullName(chosen);
+    }
+
+    /**
+     * Talkies settings → Country: the country the picks and scores are for, for a TV whose time zone says otherwise
+     * or anyone who wants another country's picks. Automatic first, then common ones, then every country A to Z.
+     * The weather's °C/°F and which app has the cricket still follow where the TV is.
+     */
+    private void openCountry() {
+        countryDepth = menuParents.size();  // Talkies settings is pushed just after: choosing a country goes back there
+        beginMenu(settingsAt, "Country for picks and scores");
+        String chosen = Region.chosen(this);
+        addRow("Automatic", Region.fullName(Region.here(this)) + (chosen == null ? "  ·  On" : ""), () -> setCountry(null), true);
+        for (String cc : COUNTRIES) addRow(Region.fullName(cc), cc.equals(chosen) ? "On" : null, () -> setCountry(cc), true);
+        addRow("More countries", "A to Z", this::openAllCountries, false);
+        showMenu(360);
+    }
+
+    private void openAllCountries() {
+        beginMenu(settingsAt, "Country for picks and scores");
+        String chosen = Region.chosen(this);
+        List<String> all = new ArrayList<>(Arrays.asList(Locale.getISOCountries()));
+        all.sort((a, b) -> Region.fullName(a).compareToIgnoreCase(Region.fullName(b)));
+        for (String cc : all) addRow(Region.fullName(cc), cc.equals(chosen) ? "On" : null, () -> setCountry(cc), true);
+        showMenu(360);
+    }
+
+    /** Saves the country (null: automatic); the picks, the New in … tab and the score defaults follow at once. */
+    private void setCountry(String cc) {
+        Region.choose(this, cc);
+        applySports();
+        tabs[2].setText("New in " + Region.name(Region.country(this)));
+        Toast.makeText(this, "Country: " + countryLabel(), Toast.LENGTH_SHORT).show();
+        onPicks(null);
+        reloadScores();
+        // Back to Talkies settings, on the Country row, as Back would from the first list.
+        while (menuParents.size() > countryDepth + 1) menuParents.pop();
+        back();
+    }
+
+    /** "Cricket, Football", "All", "Off". */
+    private String sportsLabel() {
+        if (sportsOn.isEmpty()) return "Off";
+        if (sportsOn.size() == SPORTS.length) return "All";
+        List<String> names = new ArrayList<>();
+        for (String[] sp : SPORTS) if (sportsOn.contains(sp[0])) names.add(sportName(sp));
+        return String.join(", ", names);
+    }
+
+    /**
+     * Talkies settings → Sports: one row per sport, On when its scores show; OK turns it on or off. Leaving shows the
+     * new set and fetches what's newly on; Football leagues appears in settings only while football is on.
+     */
+    private void openSports() {
+        beginMenu(settingsAt, "Sports");
+        for (String[] sp : SPORTS) {
+            final View[] row = new View[1];
+            row[0] = addRow(sportName(sp), sportsOn.contains(sp[0]) ? "On" : null, () -> {
+                Set<String> next = new java.util.LinkedHashSet<>();
+                for (String[] x : SPORTS) if (sportsOn.contains(x[0]) != x[0].equals(sp[0])) next.add(x[0]);
+                prefs.edit().putString("sports", String.join(",", next)).apply();
+                applySports();
+                setStatus(row[0], sportsOn.contains(sp[0]) ? "On" : null);
+            }, true);
         }
+        menuClosed = () -> {
+            reloadScores();
+            focusTop(settingsAt);
+        };
+        showMenu(360);
+        focusMenu(0);
+    }
+
+    /**
+     * The sports or the country changed: the saved matches again, sorted and filtered for them (which cricket counts
+     * depends on the country), then fresh ones right away.
+     */
+    private void reloadScores() {
+        cricket.refreshSoon();
+        background.execute(() -> {
+            List<Cricket.Match> savedCricket = cricket.cached(), savedFootball = football.cached();
+            runOnUiThread(() -> {
+                matches = savedCricket;
+                footballMatches = savedFootball;
+                updateScore();
+                chanSignature = "";
+                showChannels(appChannels);
+                refreshOnline();
+            });
+        });
     }
 
     /** One row per league, On when it's shown; OK turns it on or off. Leaving the menu fetches the new set. */
     private void openFootballLeagues(int focus) {
-        beginMenu(settingsAt, football.customLeagues() ? "Football leagues"
-                : "Football leagues  ·  defaults for " + Region.name(Region.country(this)));
-        List<String> on = football.leagues();
+        beginMenu(settingsAt, football.customLeagues() ? soccer + " leagues"
+                : soccer + " leagues  ·  defaults for " + Region.name(Region.country(this)));
+        List<String> on = football.footballLeagues();
         for (String[] l : Football.LEAGUES) {
             final View[] row = new View[1];
             row[0] = addRow(l[1], on.contains(l[0]) ? "On" : null, () -> {
                 football.toggle(l[0]);
-                setStatus(row[0], football.leagues().contains(l[0]) ? "On" : null);
+                setStatus(row[0], football.footballLeagues().contains(l[0]) ? "On" : null);
                 View heading = menu.getChildAt(0);
-                if (heading instanceof TextView && !menuItems.contains(heading)) ((TextView) heading).setText("Football leagues");
+                if (heading instanceof TextView && !menuItems.contains(heading)) ((TextView) heading).setText(soccer + " leagues");
             }, true);
         }
         if (football.customLeagues()) addRow("Back to the defaults", null, () -> {
@@ -2790,27 +3603,27 @@ public class HomeActivity extends Activity {
     // ---------------------------------------------------------------- keys and location
 
     /**
-     * Control Center → Keys and location: your own TMDB key (picks), CricketData key (scores) and weather area, typed
+     * Control Center → Keys and location: your own TMDB key (picks) and weather area, typed
      * with the remote or pasted from a phone with the Google TV app's keyboard. Keys are tried before they're saved.
      * They go in the same files the set-*.sh scripts push over adb (see Keys).
      */
     private void openKeysAndLocation(int focus) {
         beginMenu(settingsAt, "Keys and location");
-        String tmdb = Keys.read(this, Keys.TMDB), cricket = Keys.read(this, Keys.CRICKET), area = Keys.read(this, Keys.LOCATION);
+        String tmdb = Keys.read(this, Keys.TMDB), area = Keys.read(this, Keys.LOCATION);
         String paste = "\n\nTip: Send from your phone (above) is easier, or the Google TV app's keyboard on your phone can paste it.";
         addRow("Send from your phone", "QR code", this::openPhonePage, true);
         addRow("TMDB key", tmdb == null ? "Not set" : Keys.masked(tmdb), () -> askText("TMDB key",
                 "For the Trending and New picks. Free at themoviedb.org → Settings → API: the API Key or the API Read "
                         + "Access Token." + paste, null, true, tmdb != null, text -> saveKey(Keys.TMDB, "TMDB", text, 1)), true);
-        addRow("Cricket key", cricket == null ? "Not set" : Keys.masked(cricket), () -> askText("CricketData key",
-                "For live cricket scores. Free at cricketdata.org (100 requests a day, enough for Talkies)." + paste,
-                null, true, cricket != null, text -> saveKey(Keys.CRICKET, "CricketData", text, 2)), true);
         // Coordinates pinpoint a home, so the row (and any screenshot of it) just says so; place names show as typed.
-        String where = area == null ? "Not set" : area.matches("[-+0-9.,\\s]+") ? "Coordinates"
+        String near = weather.autoCity();   // no location set: roughly where the internet address says
+        String where = area == null ? (near == null ? "Not set" : near.isEmpty() ? "Approximate" : "Near " + near) : area.matches("[-+0-9.,\\s]+") ? "Coordinates"
                 : area.length() > 22 ? area.substring(0, 21) + "…" : area;
         addRow("Weather location", where,
                 () -> askText("Weather location", "A town or area, like \"Camden, London\", or latitude,longitude, like "
-                        + "\"51.54,-0.14\".", area, false, area != null, this::saveLocation), true);
+                        + "\"51.54,-0.14\"."
+                        + (near != null ? " For now the weather goes by your internet address, which can be off by a city. Remove turns that off." : ""),
+                        area, false, area != null || near != null, this::saveLocation), true);
         showMenu(420);
         focusMenu(focus);
     }
@@ -2897,7 +3710,7 @@ public class HomeActivity extends Activity {
         String key = text.replaceAll("\\s", "");
         Toast.makeText(this, "Checking the key with " + service + "…", Toast.LENGTH_SHORT).show();
         new Thread(() -> {
-            int result = file.equals(Keys.TMDB) ? Trending.check(key) : Cricket.check(key);
+            int result = Trending.check(key);
             runOnUiThread(() -> {
                 if (result == Keys.REJECTED) {
                     Toast.makeText(this, service + " didn't accept that key, so it wasn't saved", Toast.LENGTH_LONG).show();
@@ -2908,7 +3721,7 @@ public class HomeActivity extends Activity {
                     return;
                 }
                 Toast.makeText(this, result == Keys.OK
-                        ? "The key works. " + (file.equals(Keys.TMDB) ? "Picks arrive" : "Scores arrive") + " in a minute"
+                        ? "The key works. Picks arrive in a minute"
                         : "Couldn't reach " + service + " to check it. Saved; Talkies will try it later", Toast.LENGTH_LONG).show();
                 if (zone == Z_MENU) openKeysAndLocation(row);
                 refreshOnline();
@@ -2922,13 +3735,14 @@ public class HomeActivity extends Activity {
             Toast.makeText(this, "Couldn't save the location", Toast.LENGTH_SHORT).show();
             return;
         }
+        weather.stopAuto();   // your choice from now on: a place, or no weather
         if (text.isEmpty()) {
             weatherLine = null;
             updateInfo();
         }
         Toast.makeText(this, text.isEmpty() ? "Weather location removed" : "Saved. The weather appears in a moment",
                 Toast.LENGTH_SHORT).show();
-        if (zone == Z_MENU) openKeysAndLocation(3);
+        if (zone == Z_MENU) openKeysAndLocation(2);
         refreshOnline();
     }
 
@@ -2948,13 +3762,12 @@ public class HomeActivity extends Activity {
         try {
             page = new PhonePage(lan, new PhonePage.Listener() {
                 @Override public void checking() {
-                    runOnUiThread(() -> status.setText("Checking with TMDB and CricketData…"));
+                    runOnUiThread(() -> status.setText("Checking with TMDB…"));
                 }
 
                 @Override public List<String> accept(Map<String, String> fields) {
                     List<String> lines = new ArrayList<>();
                     if (fields.containsKey("tmdb")) lines.add(acceptKey(Keys.TMDB, "TMDB", fields.get("tmdb")));
-                    if (fields.containsKey("cricket")) lines.add(acceptKey(Keys.CRICKET, "CricketData", fields.get("cricket")));
                     if (fields.containsKey("location")) lines.add(Keys.write(HomeActivity.this, Keys.LOCATION, fields.get("location"))
                             ? "Weather location saved." : "Couldn't save the weather location.");
                     runOnUiThread(() -> {
@@ -2990,8 +3803,8 @@ public class HomeActivity extends Activity {
         box.addView(status);
         dialog[0] = new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Send from your phone")
-                .setMessage("Scan this with your phone's camera (on the same Wi-Fi as the TV), then paste the keys and your "
-                        + "weather area there.")
+                .setMessage("Scan this with your phone's camera (on the same Wi-Fi as the TV), then paste your TMDB key "
+                        + "and weather area there.")
                 .setView(box)
                 .setNegativeButton("Close", null)
                 .setOnDismissListener(d -> page.close())
@@ -3172,10 +3985,57 @@ public class HomeActivity extends Activity {
                 .show();
     }
 
+    private static final String REPORT_URL = "https://github.com/rajupp/talkies/issues/new?template=bug_report.yml";
+
+    /**
+     * About → Report a problem: a QR code for a new GitHub bug report with this TV's details already filled in (its
+     * model, Android and Talkies versions, memory and the settings that change how keys work), so the report doesn't
+     * start with "which TV?". Nothing is sent from the TV. An idea from Aerial (aerial-tv, MIT).
+     */
+    private void showReport() {
+        String version = "";
+        try { version = pm.getPackageInfo(getPackageName(), 0).versionName; } catch (PackageManager.NameNotFoundException ignored) { }
+        ActivityManager am = getSystemService(ActivityManager.class);
+        ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+        am.getMemoryInfo(mi);
+        String device = (Build.MODEL.toLowerCase(Locale.ROOT).startsWith(Build.MANUFACTURER.toLowerCase(Locale.ROOT)) ? ""
+                : Build.MANUFACTURER + " ") + Build.MODEL;
+        String details = (ports().isEmpty() ? "Box" : "TV") + String.format(Locale.ROOT, ", %.1f GB RAM", mi.totalMem / 1073741824.0)
+                + ", Accessibility " + (SleepService.isRunning() ? "On" : "Off")
+                + ", Remote keys " + (SleepService.watchButtons(this) ? "On" : "Off") + (lite ? ", Lite effects" : "");
+        // The same, in characters a link carries as they are, so it fits in the QR code: TV_1.9GB_access-on_keys-off.
+        String compact = (ports().isEmpty() ? "Box" : "TV") + String.format(Locale.ROOT, "_%.1fGB", mi.totalMem / 1073741824.0)
+                + "_access-" + (SleepService.isRunning() ? "on" : "off") + "_keys-" + (SleepService.watchButtons(this) ? "on" : "off")
+                + (lite ? "_lite" : "");
+        String url = REPORT_URL + "&version=" + Uri.encode(version) + "&android=" + Uri.encode("Android " + Build.VERSION.RELEASE)
+                + "&device=" + Uri.encode(device);
+        // A QR code holds 213 bytes here: the details go in only when they fit.
+        if ((url + "&details=" + compact).length() <= 213) url += "&details=" + compact;
+        if (url.length() > 213) url = REPORT_URL;
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER_HORIZONTAL);
+        box.setPadding(px(24), px(8), px(24), 0);
+        box.addView(qrCode(url), new LinearLayout.LayoutParams(px(200), px(200)));
+        TextView what = new TextView(this);
+        what.setText(device + "  ·  Android " + Build.VERSION.RELEASE + "  ·  Talkies " + version + "\n" + details);
+        what.setTextSize(12);
+        what.setGravity(Gravity.CENTER_HORIZONTAL);
+        what.setPadding(0, px(8), 0, 0);
+        box.addView(what);
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Report a problem")
+                .setMessage("Scan this with your phone: it opens a bug report on GitHub with these details filled in. "
+                        + "Say what happened, and add a photo of the screen if you can.")
+                .setView(box)
+                .setNegativeButton("Close", null)
+                .show();
+    }
+
     /** Checks a key from the phone page with its service and saves it unless turned down; the line the phone shows. */
     private String acceptKey(String file, String service, String text) {
         String key = text.replaceAll("\\s", "");
-        int result = file.equals(Keys.TMDB) ? Trending.check(key) : Cricket.check(key);
+        int result = Trending.check(key);
         if (result == Keys.REJECTED) return service + " didn't accept that key, so it wasn't saved.";
         if (!Keys.write(this, file, key)) return "Couldn't save the " + service + " key.";
         return result == Keys.OK ? service + " key saved, and it works." : service + " key saved. The TV couldn't reach "
@@ -3192,8 +4052,8 @@ public class HomeActivity extends Activity {
 
     private void openRemoteKeys() {
         boolean on = SleepService.watchButtons(this);
-        beginMenu(settingsAt, on ? "Remote keys  ·  On: some TVs then change volume one step per press"
-                : "Remote keys  ·  Off: holding Volume works on every TV");
+        beginMenu(settingsAt, on ? "Remote keys  ·  On: Home goes straight to Talkies. Some TVs then change volume one step per press"
+                : "Remote keys  ·  Off: holding Volume works on every TV. Home shows Google TV for a moment first");
         addRow("Remote keys", on ? "On" : "Off", () -> {
             prefs.edit().putBoolean("remote_keys_on", !on).apply();
             SleepService.applyButtonWatching();
@@ -3231,10 +4091,7 @@ public class HomeActivity extends Activity {
     private void openKeyActions(int code) {
         menuClosed = null;
         beginMenu(settingsAt, RemoteKeys.keyName(code) + "  ·  now: " + RemoteKeys.describe(this, RemoteKeys.action(this, code)));
-        addRow("Open an app", null, () -> openKeyApps(code), false);
-        addRow("Inputs", null, () -> setKey(code, RemoteKeys.INPUTS), false);
-        addRow("Recent apps", null, () -> setKey(code, RemoteKeys.RECENTS), false);
-        addRow("Talkies", null, () -> setKey(code, RemoteKeys.HOME), false);
+        addKeyJobs(code, false);
         addRow("Do nothing", null, () -> setKey(code, RemoteKeys.NONE), false);
         if (RemoteKeys.action(this, code) != null) {
             String hold = RemoteKeys.holdAction(this, code);
@@ -3248,19 +4105,35 @@ public class HomeActivity extends Activity {
     private void openHoldActions(int code) {
         String hold = RemoteKeys.holdAction(this, code);
         beginMenu(settingsAt, "Hold " + RemoteKeys.keyName(code) + "  ·  now: " + (hold == null ? "same as a press" : RemoteKeys.describe(this, hold)));
-        addRow("Open an app", null, () -> openKeyApps(code, true), false);
-        addRow("Inputs", null, () -> setHold(code, RemoteKeys.INPUTS), false);
-        addRow("Recent apps", null, () -> setHold(code, RemoteKeys.RECENTS), false);
-        addRow("Talkies", null, () -> setHold(code, RemoteKeys.HOME), false);
+        addKeyJobs(code, true);
         if (hold != null) addRow("Same as a press", null, () -> setHold(code, null), false);
         showMenu(420);
     }
 
-    private void openKeyApps(int code) { openKeyApps(code, false); }
+    private void addKeyJobs(int code, boolean hold) {
+        addRow("Open an app", null, () -> openKeyApps(code, hold), false);
+        if (!shownPorts().isEmpty()) addRow("Go to an input", null, () -> openKeyInputs(code, hold), false);
+        String[][] jobs = {{"Previous app", RemoteKeys.PREVIOUS}, {"Resume watching", RemoteKeys.RESUME}, {"Inputs", RemoteKeys.INPUTS},
+                {"Recent apps", RemoteKeys.RECENTS}, {"Control Center", RemoteKeys.CONTROL}, {"Talkies settings", RemoteKeys.TALKIES_SETTINGS},
+                {"TV settings", RemoteKeys.SETTINGS}, {"Wi-Fi", RemoteKeys.WIFI}, {"Sound output", RemoteKeys.SOUND},
+                {"Bluetooth", RemoteKeys.BLUETOOTH}, {"Play / pause", RemoteKeys.PLAY_PAUSE}, {"Mute", RemoteKeys.MUTE},
+                {"Screensaver", RemoteKeys.SCREENSAVER}, {"Turn off", RemoteKeys.TURN_OFF}, {"Talkies", RemoteKeys.HOME}};
+        for (String[] j : jobs) addRow(j[0], null, () -> { if (hold) setHold(code, j[1]); else setKey(code, j[1]); }, false);
+    }
+
+    private void openKeyInputs(int code, boolean hold) {
+        beginMenu(settingsAt, "Go to which input?");
+        for (Port p : shownPorts()) addRow(p.row(), null, () -> {
+            String action = RemoteKeys.INPUT + p.id;
+            RemoteKeys.nameInput(this, action, p.tile());
+            if (hold) setHold(code, action); else setKey(code, action);
+        }, false);
+        showMenu(420);
+    }
 
     private void openKeyApps(int code, boolean hold) {
         beginMenu(settingsAt, "Open which app?");
-        for (AppEntry a : apps) addRow(a.label, null, () -> {
+        for (AppEntry a : apps) if (a.input == null) addRow(a.label, null, () -> {
             if (hold) setHold(code, RemoteKeys.APP + a.pkg); else setKey(code, RemoteKeys.APP + a.pkg);
         }, false);
         showMenu(360);
@@ -3385,9 +4258,57 @@ public class HomeActivity extends Activity {
         return on != null && on.contains(getPackageName() + "/");
     }
 
+    /**
+     * The TV's Notification access screen. Many Android 8 TVs have none, so there notification access is only a step
+     * to do while Talkies can switch it on itself (allowNotifications); otherwise it's optional and needs a computer.
+     */
+    private boolean notificationScreen() {
+        return pm.resolveActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS), 0) != null;
+    }
+
+    private boolean notificationsDoable() { return notificationScreen() || ServiceRepair.canRepair(this); }
+
+    private static final String NOTIFICATION_COMMAND =
+            "adb shell cmd notification allow_listener com.techpp.glass/com.techpp.glass.WatchService";
+
+    /** Switches notification access on with the WRITE_SECURE_SETTINGS grant, for TVs without the screen. */
+    private boolean allowNotifications() {
+        if (!ServiceRepair.canRepair(this)) return false;
+        String me = new android.content.ComponentName(this, WatchService.class).flattenToString();
+        String on = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
+        try {
+            return Settings.Secure.putString(getContentResolver(), "enabled_notification_listeners",
+                    on == null || on.isEmpty() ? me : on + ":" + me);
+        } catch (SecurityException e) {
+            return false;
+        }
+    }
+
+    /**
+     * A TV without the Notification access screen: what it's for, and the one command that switches it on from a
+     * computer. Everything else works without it.
+     */
+    private void showNotificationCommand() {
+        TextView cmd = new TextView(this);
+        cmd.setText(NOTIFICATION_COMMAND);
+        cmd.setTextSize(13);
+        cmd.setTypeface(Typeface.MONOSPACE);
+        cmd.setTextIsSelectable(true);
+        cmd.setPadding(px(24), px(8), px(24), 0);
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Notification access")
+                .setMessage("This TV's settings have no Notification access screen, so it can't be switched on here. "
+                        + "It's optional: only Continue watching, Now playing and the update bell need it. From a computer "
+                        + "connected with adb, this one command switches it on:")
+                .setView(cmd)
+                .setNegativeButton("Close", null)
+                .show();
+    }
+
     /** How many first-time steps are still to do: the Home button service, notification access, the permissions. */
     private int setupMissing() {
-        return (SleepService.isRunning() ? 0 : 1) + (notificationAccess() ? 0 : 1) + (permissionsMissing() ? 1 : 0);
+        return (SleepService.isRunning() ? 0 : 1) + (notificationAccess() || !notificationsDoable() ? 0 : 1)
+                + (permissionsMissing() ? 1 : 0);
     }
 
     /**
@@ -3400,27 +4321,71 @@ public class HomeActivity extends Activity {
         requestPermissions(SETUP_PERMISSIONS, REQ_SETUP);
     }
 
+    /** The screen with the switch that keeps the Home button on Talkies. */
+    private void openHomeButtonSwitch() {
+        Toast.makeText(this, "Switch on Talkies here: it keeps the Home button on Talkies", Toast.LENGTH_LONG).show();
+        Intent i = new Intent().setClassName("com.android.tv.settings", "com.android.tv.settings.oemlink.AccessibilitySettingsActivity");
+        if (pm.resolveActivity(i, 0) == null) i = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+        start(i);
+    }
+
+    private void openRestrictedSettings() {
+        Toast.makeText(this, "Look for Allow restricted settings here. Not there? The README's Questions and fixes "
+                + "has the one command that allows it", Toast.LENGTH_LONG).show();
+        start(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
+    }
+
+    /** A new install whose Home button isn't set up yet, and which hasn't had the card. An update never gets it. */
+    private boolean welcomeDue() {
+        if (prefs.getBoolean("welcome_seen", false) || SleepService.isRunning()) return false;
+        try {
+            android.content.pm.PackageInfo pi = pm.getPackageInfo(getPackageName(), 0);
+            return pi.firstInstallTime == pi.lastUpdateTime;
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Once, the first time Home shows on a new install: without this one step, pressing Home goes to the TV's own
+     * launcher and Talkies looks broken. It waits for the permissions prompt (refreshOnline runs with the window in
+     * focus). Later is for good; Talkies settings → Finish setup stays.
+     */
+    private void showWelcomeCard() {
+        if (!inFront || zone == Z_MENU || moving || !welcomeDue()) return;
+        prefs.edit().putBoolean("welcome_seen", true).apply();
+        beginMenu(P_SETTINGS, null);
+        menuTitle("Welcome to Talkies");
+        TextView t = new TextView(this);
+        t.setText("One step left, so the Home button stays here.");
+        t.setTextSize(16);
+        t.setTextColor(theme.text);
+        t.setTypeface(getResources().getFont(R.font.outfit));
+        t.setPadding(px(14), px(5), px(14), px(5));
+        menu.addView(t);
+        menu.addView(new View(this), new LinearLayout.LayoutParams(1, px(12)));
+        addRow("Set up Home button", null, this::openHomeButtonSwitch, false);
+        if (Build.VERSION.SDK_INT >= 33) addRow("Switch greyed out?", "App info", this::openRestrictedSettings, false);
+        addRow("Later", null, () -> { }, false);
+        showCentredCard();
+    }
+
     /** Talkies settings → Finish setup: one row per step still to do; OK opens the place it's done. */
     private void openFinishSetup() {
         beginMenu(settingsAt, "Finish setup");
-        if (!SleepService.isRunning()) addRow("Home button", "Accessibility → Talkies", () -> {
-            Toast.makeText(this, "Switch on Talkies here: it keeps the Home button on Talkies", Toast.LENGTH_LONG).show();
-            Intent i = new Intent().setClassName("com.android.tv.settings", "com.android.tv.settings.oemlink.AccessibilitySettingsActivity");
-            if (pm.resolveActivity(i, 0) == null) i = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
-            start(i);
-        }, false);
+        if (!SleepService.isRunning()) addRow("Home button", "Accessibility → Talkies", this::openHomeButtonSwitch, false);
         // Android 13 and later grey out these switches for an app installed from an APK, until allowed in App info
         // (or with one adb command where the TV's App info doesn't offer it: README → Questions and fixes).
         if (Build.VERSION.SDK_INT >= 33 && (!SleepService.isRunning() || !notificationAccess()))
-            addRow("Switch greyed out?", "App info → Allow restricted settings", () -> {
-                Toast.makeText(this, "Look for Allow restricted settings here. Not there? The README's Questions and fixes "
-                        + "has the one command that allows it", Toast.LENGTH_LONG).show();
-                start(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
-            }, false);
-        if (!notificationAccess()) addRow("Notification access", "Continue, Now playing, the bell", () -> {
+            addRow("Switch greyed out?", "App info → Allow restricted settings", this::openRestrictedSettings, false);
+        if (!notificationAccess() && notificationScreen()) addRow("Notification access", "Continue, Now playing, the bell", () -> {
             Toast.makeText(this, "Switch on Talkies here", Toast.LENGTH_LONG).show();
             start(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
         }, false);
+        else if (!notificationAccess() && ServiceRepair.canRepair(this)) addRow("Notification access", "OK switches it on", () ->
+            Toast.makeText(this, allowNotifications() ? "Notification access is on: Continue fills in a moment"
+                    : "Couldn't switch it on", Toast.LENGTH_LONG).show(), false);
+        else if (!notificationAccess()) addRow("Notification access", "Optional · no switch on this TV", this::showNotificationCommand, true);
         if (permissionsMissing()) addRow("Wi-Fi name and Watch Next", "OK asks", () -> {
             closeMenu();
             requestPermissions(SETUP_PERMISSIONS, REQ_SETUP);
@@ -3482,10 +4447,33 @@ public class HomeActivity extends Activity {
         holdFired = true;
         if (zone == Z_DOCK || zone == Z_GRID) openAppMenu();
         else if (zone == Z_TOP && iconIdx == P_SETTINGS) {
-            openTalkiesSettings(P_SETTINGS);
-            menuOpener = () -> openTalkiesSettings(P_SETTINGS);
+            openSettingsMenu();
         }
         else if (continueCard() != null) openContinueMenu();
+        else if (matchCard() != null) openMatchMenu();
+    }
+
+    /** A remote button's job that happens on Home. */
+    private void openFromKey(String open) {
+        if (RemoteKeys.INPUTS.equals(open)) openInputs();
+        else if (RemoteKeys.RECENTS.equals(open)) openRecents();
+        else if (RemoteKeys.CONTROL.equals(open)) openControlCenter();
+        else if (RemoteKeys.TALKIES_SETTINGS.equals(open)) openSettingsMenu();
+        else if (RemoteKeys.BLUETOOTH.equals(open)) { if (!openShortcut("bluetooth")) openBluetooth(); }
+        else if (RemoteKeys.RESUME.equals(open)) resumeWatching();
+    }
+
+    /** The first Continue card, as if you'd pressed OK on it. */
+    private void resumeWatching() {
+        recentPicks = continuePicks(RecentStore.load(this), watchNextPicks);
+        if (recentPicks.isEmpty()) Toast.makeText(this, "Nothing to continue yet", Toast.LENGTH_SHORT).show();
+        else openPick(recentPicks.get(0));
+    }
+
+    /** Talkies settings, by holding OK on the gear or from a remote button. */
+    private void openSettingsMenu() {
+        openTalkiesSettings(P_SETTINGS);
+        menuOpener = () -> openTalkiesSettings(P_SETTINGS);
     }
 
     /** Move, Uninstall (apps you installed only), App info. */
@@ -3505,6 +4493,11 @@ public class HomeActivity extends Activity {
         if (inDock || appsOrder() == ORDER_YOURS) addRow("Move", null, this::startMove, false);
         File own = AppEntry.customImage(a.pkg);
         addRow("Change image", own != null && own.isFile() ? "your picture" : null, () -> openTileImage(a.pkg), false);
+        if (a.input != null) {
+            addRow("Remove from Home", null, () -> setHomeInput(a.input, false), false);
+            showMenu(240);
+            return;
+        }
         addRow("Hide", null, () -> hideApp(a.pkg), false);
         if (canUninstall(a.pkg)) {
             addRow("Uninstall", null, () -> start(new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + a.pkg))), false);
@@ -3551,14 +4544,49 @@ public class HomeActivity extends Activity {
         Toast.makeText(this, app.label + " moved to All apps; " + next.label + " is in the dock", Toast.LENGTH_SHORT).show();
     }
 
-    /** Apps you hid (Hide in an app's hold-OK menu): left out of the dock and All apps, still installed. */
+    /**
+     * What TV makers install that nobody opens: manuals, firmware updaters, store demos, setup and factory tools.
+     * Hidden from the start; Talkies settings → Hidden apps shows one again. The list is Home Deck's (MIT).
+     */
+    private static final Set<String> CLUTTER = new HashSet<>(Arrays.asList(
+            "jp.co.sharp.av.android.emanual", "jp.co.sharp.av.android.epopdemo", "rcota.android.av.sharp.co.jp.rcota",
+            "com.google.android.tvtutorials", "fusion.android.tv.demo",
+            "com.tcl.ocean.instructions", "com.tcl.repairguide", "com.tcl.exhibit", "com.tcl.esticker",
+            "com.tcl.versionUpdateApp", "com.tcl.UpdatePeripheral", "com.tcl.useragreement",
+            "com.hisense.fte", "com.vt.fte", "com.hisense.storemode", "com.vt.storemode", "com.hisense.tv.ota",
+            "com.hisense.remoteupgrade", "com.vt.tv.ota", "com.vt.remoteupgrade",
+            "com.sony.dtv.imanual", "com.sony.dtv.demomode", "com.sony.dtv.demosupport", "com.sony.dtv.multiscreendemo",
+            "com.xiaomi.mitv.handbook", "com.xiaomi.mitv.manualhelp", "com.xiaomi.mitv.updateservice",
+            "com.xiaomi.mitv.upgrade", "com.duokan.factorytest", "org.droidtv.demome", "com.Smartdevice.emanual"));
+
+    /** Apps you hid (Hide in an app's hold-OK menu), and installed CLUTTER you haven't shown: still installed. */
     private Set<String> hiddenApps() {
         String s = prefs.getString("hidden_apps", "");
-        return s.isEmpty() ? new HashSet<>() : new HashSet<>(Arrays.asList(s.split(",")));
+        Set<String> out = s.isEmpty() ? new HashSet<>() : new HashSet<>(Arrays.asList(s.split(",")));
+        Set<String> shown = new HashSet<>(Arrays.asList(prefs.getString("clutter_shown", "").split(",")));
+        for (String p : CLUTTER) if (!shown.contains(p) && installed(p)) out.add(p);
+        return out;
+    }
+
+    private boolean installed(String pkg) {
+        try {
+            pm.getApplicationInfo(pkg, 0);
+            return true;
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        }
     }
 
     private void setHidden(String pkg, boolean hide) {
-        Set<String> h = hiddenApps();
+        if (CLUTTER.contains(pkg)) {
+            Set<String> shown = new HashSet<>(Arrays.asList(prefs.getString("clutter_shown", "").split(",")));
+            shown.remove("");
+            if (hide) shown.remove(pkg); else shown.add(pkg);
+            prefs.edit().putString("clutter_shown", String.join(",", shown)).apply();
+            return;
+        }
+        String s = prefs.getString("hidden_apps", "");
+        Set<String> h = s.isEmpty() ? new HashSet<>() : new HashSet<>(Arrays.asList(s.split(",")));
         if (hide) h.add(pkg); else h.remove(pkg);
         prefs.edit().putString("hidden_apps", String.join(",", h)).apply();
     }
@@ -3622,6 +4650,40 @@ public class HomeActivity extends Activity {
         return null;
     }
 
+    /** The match card focus is on, in a score row. */
+    private Cricket.Match matchCard() {
+        if (zone != Z_CHAN || chanIdx >= chanRows.size()) return null;
+        List<Trending.Pick> items = chanRows.get(chanIdx).items;
+        if (items.isEmpty()) return null;
+        Object extra = items.get(Math.min(chanCol[chanIdx], items.size() - 1)).extra;
+        return extra instanceof Cricket.Match ? (Cricket.Match) extra : null;
+    }
+
+    /** Pin a match over whatever is playing (ScoreCard), and which corner it sits in. */
+    private void openMatchMenu() {
+        Cricket.Match m = matchCard();
+        if (m == null) return;
+        final int r = chanIdx, c = Math.min(chanCol[r], chanCards.get(r).size() - 1);
+        beginMenu(P_CONTROL, m.t1 + " " + m.vs + " " + m.t2);
+        menuTile = chanCards.get(r).get(c);
+        menuClosed = () -> focusChan(r, c);
+        if (m.id.equals(ScoreCard.pinnedId(this))) {
+            addRow("Unpin from TV", null, () -> ScoreCard.unpin(this), false);
+        } else if (!m.ended) {
+            addRow("Pin over TV", null, () -> {
+                boolean on = ScoreCard.pin(this, m);
+                Toast.makeText(this, on ? "It shows over your apps while you watch. Control Center unpins it"
+                        : "This needs Talkies' Accessibility switch: Talkies settings → Finish setup", Toast.LENGTH_LONG).show();
+            }, false);
+        }
+        final View[] corner = new View[1];
+        corner[0] = addRow("Corner", ScoreCard.cornerName(this), () -> {
+            ScoreCard.nextCorner(this);
+            setStatus(corner[0], ScoreCard.cornerName(this));
+        }, true);
+        showMenu(320);
+    }
+
     /** Remove from Continue, or open the app itself rather than the episode. */
     private void openContinueMenu() {
         Trending.Pick p = continueCard();
@@ -3631,10 +4693,71 @@ public class HomeActivity extends Activity {
         beginMenu(P_CONTROL, p.title);
         menuTile = z == Z_PICKS ? picksRow.anchorCard() : chanCards.get(r).get(c);
         menuClosed = () -> { if (z == Z_PICKS) focusPicks(anchor); else focusChan(r, c); };
+        addRow("Refresh Continue", null, this::refreshContinue, false);
         addRow("Remove from Continue", null, () -> removeFromContinue(p), false);
         Intent app = p.pkg == null ? null : pm.getLeanbackLaunchIntentForPackage(p.pkg);
         if (app != null) addRow("Open " + Channels.label(pm, p.pkg), null, () -> start(app), false);
         showMenu(320);
+    }
+
+    /** Reads what the apps have reported again, now: only as new as an app has told Android. */
+    private void refreshContinue() {
+        background.execute(() -> {
+            List<Trending.Pick> list = WatchNext.load(this);
+            runOnUiThread(() -> {
+                watchNextPicks = list;
+                refreshChannels();
+                recentPicks = continuePicks(RecentStore.load(this), watchNextPicks);
+                if (zone == Z_PICKS && tabIdx == 0) {
+                    int a = Math.max(0, Math.min(picksRow.anchor(), recentPicks.size() - 1));
+                    buildPicksRow(a);
+                    if (!rowPicks.isEmpty()) focusPicks(Math.min(a, rowPicks.size() - 1)); else focusDock(dockIdx);
+                } else if (tabIdx == 0) {
+                    buildPicksRow(0);
+                }
+                Toast.makeText(this, "Continue refreshed", Toast.LENGTH_SHORT).show();
+            });
+        });
+    }
+
+    private String continueAppsLabel() {
+        int off = prefs.getStringSet("continue_apps_off", java.util.Collections.emptySet()).size();
+        return off == 0 ? "All" : off + " hidden";
+    }
+
+    /**
+     * Talkies settings → Continue apps: on or off for each app that has something to continue, and any turned off
+     * (which no longer appear in the row, so they couldn't be found otherwise). Off hides its cards in the Continue
+     * tab and the Watch Next row. Asked for by AndyVRD (Discussion #22).
+     */
+    private void openContinueApps() {
+        beginMenu(settingsAt, "Continue apps");
+        Set<String> pkgs = new HashSet<>(prefs.getStringSet("continue_apps_off", java.util.Collections.emptySet()));
+        for (Trending.Pick p : RecentStore.load(this)) if (p.pkg != null) pkgs.add(p.pkg);
+        for (Trending.Pick p : watchNextPicks) if (p.pkg != null) pkgs.add(p.pkg);
+        List<String[]> rows = new ArrayList<>();
+        for (String p : pkgs) rows.add(new String[]{p, Channels.label(pm, p)});
+        rows.sort((x, y) -> x[1].compareToIgnoreCase(y[1]));
+        if (rows.isEmpty()) addRow("Nothing to continue yet", null, () -> { }, true);
+        for (String[] r : rows) {
+            final View[] row = new View[1];
+            boolean off = prefs.getStringSet("continue_apps_off", java.util.Collections.emptySet()).contains(r[0]);
+            row[0] = addRow(r[1], off ? "Hidden" : "Shown", () -> {
+                Set<String> now = new HashSet<>(prefs.getStringSet("continue_apps_off", java.util.Collections.emptySet()));
+                boolean hide = now.add(r[0]);
+                if (!hide) now.remove(r[0]);
+                prefs.edit().putStringSet("continue_apps_off", now).apply();
+                setStatus(row[0], hide ? "Hidden" : "Shown");
+            }, true);
+        }
+        menuClosed = () -> {
+            recentPicks = continuePicks(RecentStore.load(this), watchNextPicks);
+            refreshChannels();
+            buildPicksRow(0);
+            focusTop(settingsAt);
+        };
+        showMenu(360);
+        focusMenu(0);
     }
 
     /** "pkg / title / episode line": a new episode of the same show is a new key, so it comes back. */
@@ -3717,6 +4840,137 @@ public class HomeActivity extends Activity {
         if (!any && zone == Z_MENU && menuAnchor == P_BELL) closeMenu();
     }
 
+    /** Talkies settings → Updates (and the top of What's new): the latest version; OK checks again and installs it. */
+    private void addUpdatesRow() {
+        final View[] up = new View[1];
+        up[0] = addRow("Updates", SelfUpdate.summary(this), () -> SelfUpdate.checkAndInstall(this, st -> runOnUiThread(() -> {
+            if (up[0].isAttachedToWindow()) setStatus(up[0], st);
+        })), true);
+    }
+
+    private String versionName() {
+        try { return pm.getPackageInfo(getPackageName(), 0).versionName; } catch (PackageManager.NameNotFoundException e) { return ""; }
+    }
+
+    /** A paragraph in a menu: wraps, and the arrows step through it like a row (focusMenu brightens it). */
+    private View addNote(CharSequence text, float sizeSp) {
+        View row = addRow("", null, () -> { }, true);
+        row.setTag("note");
+        TextView t = row.findViewById(R.id.input_label);
+        t.setText(text);
+        t.setSingleLine(false);
+        t.setTextSize(sizeSp);
+        t.setLineSpacing(0, 1.12f);
+        row.getLayoutParams().height = ViewGroup.LayoutParams.WRAP_CONTENT;
+        row.setPadding(row.getPaddingLeft(), px(6), row.getPaddingRight(), px(6));
+        return row;
+    }
+
+    /**
+     * A section's name in a menu ("NEW", "LOOK"): a thin rule (after the first rows), then a small, spaced-out label in
+     * the quieter text colour, so it reads as a divider, not as one more row. The arrows pass over both.
+     */
+    private void addMenuHeading(String text) {
+        if (!menuItems.isEmpty()) {
+            View rule = new View(this);
+            rule.setTag("rule");
+            rule.setBackgroundColor(theme.menuStroke);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, px(1) / 2));
+            lp.setMargins(px(14), px(10), px(14), 0);
+            menu.addView(rule, lp);
+        }
+        TextView h = new TextView(this);
+        h.setText(text.toUpperCase(Locale.ROOT));
+        h.setTextSize(11);
+        h.setLetterSpacing(0.12f);
+        h.setTextColor(theme.text2);
+        h.setTypeface(getResources().getFont(R.font.outfit));
+        h.setFontVariationSettings("'wght' 600");
+        h.setPadding(px(14), px(12), px(14), px(4));
+        menu.addView(h);
+    }
+
+    private TextView menuTitle(String text) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextSize(21);
+        t.setTextColor(theme.text);
+        t.setTypeface(getResources().getFont(R.font.outfit));
+        t.setFontVariationSettings("'wght' 600");
+        t.setPadding(px(14), px(10), px(14), px(8));
+        menu.addView(t);
+        return t;
+    }
+
+    /**
+     * Talkies settings → About → What's new (and the card's See all changes): this version's notes in a panel down the
+     * right edge, like Plume's, with Updates at the top.
+     */
+    private void openWhatsNew() {
+        beginMenu(settingsAt, null);
+        menuTitle("What's new in " + versionName());
+        addUpdatesRow();
+        List<WhatsNew.Section> all = WhatsNew.read(this);
+        for (WhatsNew.Section sec : all) {
+            addMenuHeading(sec.title);
+            for (String it : sec.items) addNote(WhatsNew.styled(it), 14);
+        }
+        setFocus(null, 1f, 0);  // from the card, the dock's ring would show behind it
+        showMenu(400);
+        // Full height against the right edge, square on that side.
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) menuScroll.getLayoutParams();
+        lp.leftMargin = getResources().getDisplayMetrics().widthPixels - px(400);
+        lp.topMargin = 0;
+        lp.height = getResources().getDisplayMetrics().heightPixels;
+        menuScroll.setLayoutParams(lp);
+        GradientDrawable bg = rounded(theme.menuBg, 0, 0);
+        float r = px(22);
+        bg.setCornerRadii(new float[]{r, r, 0, 0, 0, 0, r, r});
+        menuScroll.setBackground(bg);
+        menu.setPadding(px(18), px(22), px(18), px(22));
+    }
+
+    /** Once after an update, on Home: a few of the notes, Done, and See all changes. In the middle of the screen. */
+    private void showNewsCard() {
+        if (!inFront || zone == Z_MENU || moving || !WhatsNew.due(this, prefs)) return;
+        List<String> items = WhatsNew.highlights(WhatsNew.read(this), 4);
+        WhatsNew.markSeen(this, prefs);
+        if (items.isEmpty()) return;
+        beginMenu(P_SETTINGS, null);
+        menuTitle("New in Talkies " + versionName());
+        for (String it : items) {
+            TextView t = new TextView(this);
+            t.setText(WhatsNew.styled("•  " + it));
+            t.setTextSize(16);
+            t.setTextColor(theme.text);
+            t.setTypeface(getResources().getFont(R.font.outfit));
+            t.setPadding(px(14), px(5), px(14), px(5));
+            menu.addView(t);
+        }
+        View gap = new View(this);
+        menu.addView(gap, new LinearLayout.LayoutParams(1, px(12)));
+        addRow("Done", null, () -> { }, false);
+        addRow("See all changes", null, () -> {
+            openWhatsNew();
+            menuClosed = () -> focusDock(dockIdx);
+        }, false);
+        showCentredCard();
+    }
+
+    /** The menu as a card in the middle of Home, not opened from an icon: no ring on the tile behind it, and closing it goes back to the dock. */
+    private void showCentredCard() {
+        setFocus(null, 1f, 0);
+        menuClosed = () -> focusDock(dockIdx);
+        menu.setPadding(px(16), px(16), px(16), px(12));
+        showMenu(680);
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) menuScroll.getLayoutParams();
+        menu.measure(View.MeasureSpec.makeMeasureSpec(px(680), View.MeasureSpec.EXACTLY), View.MeasureSpec.UNSPECIFIED);
+        lp.leftMargin = (getResources().getDisplayMetrics().widthPixels - px(680)) / 2;
+        lp.topMargin = Math.max(px(24), (getResources().getDisplayMetrics().heightPixels - menu.getMeasuredHeight()) / 2);
+        lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+        menuScroll.setLayoutParams(lp);
+    }
+
     /** One row per Play Store notification ("3 updates available" · "YouTube, Netflix…"); OK opens it in the Play Store. */
     private void openUpdates() {
         List<Updates.Item> list = Updates.list();
@@ -3759,6 +5013,7 @@ public class HomeActivity extends Activity {
             start(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
         }, false);
         addRow("Talkies settings", null, () -> openTalkiesSettings(P_CONTROL), false);
+        if (ScoreCard.pinnedId(this) != null) addRow("Unpin score", ScoreCard.pinnedName(this), () -> ScoreCard.unpin(this), false);
         MediaController playing = NowPlaying.current(this);
         if (playing != null) addRow("Now playing", NowPlaying.title(playing), () -> openNowPlaying(playing), false);
         if (weatherLine != null) addRow("Weather", weatherLine, () -> openWeather(false), false);
@@ -3771,8 +5026,6 @@ public class HomeActivity extends Activity {
             }, true);
             addRow("Turn off now", null, () -> { if (!Sleep.now()) needsTurnOffSetup(); }, false);
         }
-        final View[] mem = new View[1];
-        mem[0] = addRow("Free up memory", availableMb() + " MB free", () -> freeMemory(mem[0]), true);
         addRow("Recent apps", null, this::openRecents, false);
         addRow("Storage", storageLine(), () -> { if (!openShortcut("storage")) start(new Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS)); }, false);
         final View[] anim = new View[1];
@@ -3791,17 +5044,7 @@ public class HomeActivity extends Activity {
         bluetoothStatus(st -> { if (bt[0].isAttachedToWindow()) setStatus(bt[0], st); });
         // Android tells apps a soundbar is connected (HDMI ARC/eARC), not whether it's playing: say only what's known.
         addRow("Sound output", soundbarConnected() ? "Soundbar connected" : "TV speakers", () -> {
-            if (openShortcut("sound")) return;
-            // Where the speakers are chosen differs by maker: Sony keeps it under Display & sound → Audio output, and
-            // its plain Sound page has only System sounds. Elsewhere the Sound page (sound mode, outputs).
-            Intent i = new Intent();
-            if ("sony".equalsIgnoreCase(Build.MANUFACTURER)) {
-                i.setClassName("com.android.tv.settings", "com.android.tv.settings.device.displaysound.DisplaySoundActivity");
-                if (pm.resolveActivity(i, 0) == null) i = new Intent();
-            }
-            if (i.getComponent() == null) i.setClassName("com.android.tv.settings", "com.android.tv.settings.device.sound.SoundActivity");
-            if (pm.resolveActivity(i, 0) == null) i = new Intent(Settings.ACTION_SOUND_SETTINGS);
-            start(i);
+            if (!openShortcut("sound")) start(RemoteKeys.soundSettings(this));
         }, false);
         Intent dream = screensaverIntent();
         if (dream != null) addRow("Screensaver", null, () -> start(dream), false);
@@ -3817,11 +5060,11 @@ public class HomeActivity extends Activity {
     private void openTalkiesSettings(int anchor) {
         settingsAt = anchor;
         beginMenu(anchor, "Talkies settings");
-        // First: what a new TV still needs (only while something does), then the keys and the weather area.
+        // What a new TV still needs (only while something does), then the rows in groups: how Home looks, what
+        // it shows, the apps and inputs, the remote and power, and Talkies itself.
         int missing = setupMissing();
         if (missing > 0) addRow("Finish setup", missing + (missing == 1 ? " step left" : " steps left"), this::openFinishSetup, false);
-        addRow("Keys and location", null, () -> openKeysAndLocation(0), false);
-        addRow("Weather city", cityName() == null ? "Your own" : cityName(), () -> openCityPicker(0), false);
+        addMenuHeading("Look");
         final View[] look = new View[1];
         look[0] = addRow("Appearance", APPEARANCE[prefs.getInt("appearance", 0)], () -> {
             int mode = (prefs.getInt("appearance", 0) + 1) % APPEARANCE.length;
@@ -3831,10 +5074,86 @@ public class HomeActivity extends Activity {
             applyTheme();
             // Restyle the open menu too.
             menuScroll.setBackground(rounded(theme.menuBg, theme.menuStroke, 20));
-            View heading = menu.getChildAt(0);
-            if (heading instanceof TextView && !menuItems.contains(heading)) ((TextView) heading).setTextColor(theme.text2);
+            // The title, the group headings and their rules: what isn't a row.
+            for (int i = 0; i < menu.getChildCount(); i++) {
+                View v = menu.getChildAt(i);
+                if (v instanceof TextView && !menuItems.contains(v)) ((TextView) v).setTextColor(theme.text2);
+                else if ("rule".equals(v.getTag())) v.setBackgroundColor(theme.menuStroke);
+            }
             focusMenu(menuIdx);
         }, true);
+        addRow("Wallpaper", wallpaperLabel(), this::openWallpaperMenu, false);
+        final View[] bg = new View[1];
+        bg[0] = addRow("Background", backgroundLabel(), () -> {
+            boolean on = !prefs.getBoolean("blurred_art", false);
+            prefs.edit().putBoolean("blurred_art", on).apply();
+            setStatus(bg[0], backgroundLabel());
+            shownAmbient = null;
+            if (!on && !hasWallpaper) backdrop.setGlow(0);   // the art goes now; the next focus brings its app's colour
+        }, true);
+        final View[] ss = new View[1];
+        ss[0] = addRow("Screensaver", screensaverLabel(), () -> {
+            String[] order = {"clock", "board", "wallpaper", "picks"};
+            String next = order[(Arrays.asList(order).indexOf(prefs.getString("screensaver", "clock")) + 1) % order.length];
+            prefs.edit().putString("screensaver", next).apply();
+            setStatus(ss[0], screensaverLabel());
+            if (next.equals("picks") && lowMemory()) {
+                Toast.makeText(this, "Picks can make the screensaver slow on a TV with this little memory. Clock or Wallpaper is lighter",
+                        Toast.LENGTH_LONG).show();
+            } else if (!screensaverChosen()) {
+                Toast.makeText(this, "To use it, select TV's screensaver, just below", Toast.LENGTH_LONG).show();
+            }
+        }, true);
+        final View[] sc = new View[1];
+        sc[0] = addRow("TV's screensaver", screensaverChosen() ? "Talkies" : "Not Talkies", () -> {
+            if (!setScreensaver(!screensaverChosen())) {
+                openScreensaverHelp();
+                return;
+            }
+            setStatus(sc[0], screensaverChosen() ? "Talkies" : "Not Talkies");
+            setStatus(ss[0], screensaverLabel());
+        }, true);
+        addRow("Screensaver message", messageLabel(), this::openPhoneMessage, false);
+        final View[] qh = new View[1];
+        qh[0] = addRow("Quiet hours", quietLabel(), () -> {
+            String[] order = {"23-7", "22-6", "0-7", "off"};
+            String next = order[(Arrays.asList(order).indexOf(prefs.getString("quiet_hours", "23-7")) + 1) % order.length];
+            prefs.edit().putString("quiet_hours", next).apply();
+            setStatus(qh[0], quietLabel());
+        }, true);
+        final View[] fo = new View[1];
+        fo[0] = addRow("Focus", prefs.getBoolean("focus_ring", false) ? "Ring" : "Lift", () -> {
+            boolean on = !prefs.getBoolean("focus_ring", false);
+            prefs.edit().putBoolean("focus_ring", on).apply();
+            ring.setAlways(on);
+            setStatus(fo[0], on ? "Ring" : "Lift");
+        }, true);
+        final View[] fx = new View[1];
+        fx[0] = addRow("Effects", effectsLabel(), () -> {
+            String[] order = {"auto", "full", "lite"};
+            String next = order[(Arrays.asList(order).indexOf(prefs.getString("effects", "auto")) + 1) % order.length];
+            prefs.edit().putString("effects", next).apply();
+            lite = liteEffects();
+            backdrop.setLite(lite);
+            updateAmbient();
+            setStatus(fx[0], effectsLabel());
+        }, true);
+        final View[] ms = new View[1];
+        ms[0] = addRow("RAM and storage", meters.getVisibility() == View.VISIBLE ? "Shown" : "Hidden", () -> {
+            boolean show = meters.getVisibility() != View.VISIBLE;
+            prefs.edit().putBoolean("meters", show).apply();
+            meters.setVisibility(show ? View.VISIBLE : View.GONE);
+            if (show) meters.update();
+            setStatus(ms[0], show ? "Shown" : "Hidden");
+        }, true);
+        final View[] anim = new View[1];
+        anim[0] = addRow("Apps open from their tile", prefs.getBoolean("open_animation", true) ? "On" : "Off", () -> {
+            boolean on = !prefs.getBoolean("open_animation", true);
+            prefs.edit().putBoolean("open_animation", on).apply();
+            setStatus(anim[0], on ? "On" : "Off");
+        }, true);
+        addMenuHeading("For You and scores");
+        addRow("Country", countryLabel(), this::openCountry, false);
         final View[] fy = new View[1];
         fy[0] = addRow("For You", forYou ? "Shown" : "Hidden", () -> {
             forYou = !forYou;
@@ -3845,6 +5164,17 @@ public class HomeActivity extends Activity {
             buildPicksRow(0);
             if (forYou) refreshOnline();
         }, true);
+        if (forYou && trending.inIndia()) {
+            final View[] pf = new View[1];
+            pf[0] = addRow("Picks from", picksFromLabel(), () -> {
+                trending.setPicksFrom(Trending.RADAR.equals(trending.source()) ? "tmdb" : Trending.RADAR);
+                setStatus(pf[0], picksFromLabel());
+                onPicks(null);   // TMDB without a key: the old picks go now; otherwise the new ones replace them shortly
+                refreshOnline();
+            }, true);
+        }
+        // StreamRadar's lists don't say a title's language.
+        if (forYou && !Trending.RADAR.equals(trending.source())) addRow("Picks languages", languagesLabel(), this::openPicksLanguages, false);
         final View[] sp = new View[1];
         sp[0] = addRow("Hide spoilers", WatchNext.hideSpoilers(this) ? "On" : "Off", () -> {
             boolean on = !WatchNext.hideSpoilers(this);
@@ -3853,6 +5183,20 @@ public class HomeActivity extends Activity {
             recentPicks = new ArrayList<>();  // rebuild Continue with the other pictures
             refreshWatchNext();
         }, true);
+        // Off by default: looking a video up means sending its title and channel to YouTube.
+        final View[] yt = new View[1];
+        yt[0] = addRow("Sharp YouTube pictures", prefs.getBoolean("youtube_art", false) ? "On" : "Off", () -> {
+            boolean on = !prefs.getBoolean("youtube_art", false);
+            prefs.edit().putBoolean("youtube_art", on).apply();
+            setStatus(yt[0], on ? "On" : "Off");
+            if (on) refreshOnline();
+        }, true);
+        addRow("Sports", sportsLabel(), this::openSports, false);
+        if (sportsOn.contains("football")) addRow(soccer + " leagues", football.footballLeagues().size() + " on",
+                () -> openFootballLeagues(0), false);
+        addRow("Continue apps", continueAppsLabel(), this::openContinueApps, false);
+        addRow("Channels", null, this::openChannelsEditor, false);
+        addMenuHeading("Apps and inputs");
         addRow("Dock apps", dockCount + " in the dock", this::openDockApps, false);
         final View[] ds = new View[1];
         ds[0] = addRow("Dock size", dockSize() + " apps", () -> {
@@ -3862,6 +5206,20 @@ public class HomeActivity extends Activity {
             setStatus(ds[0], n + " apps");
             reloadApps();
         }, true);
+        final View[] ab = new View[1];
+        ab[0] = addRow("All apps button", prefs.getBoolean("all_apps_button", true) ? "Shown" : "Hidden", () -> {
+            boolean on = !prefs.getBoolean("all_apps_button", true);
+            prefs.edit().putBoolean("all_apps_button", on).apply();
+            setStatus(ab[0], on ? "Shown" : "Hidden");
+            reloadApps();
+        }, true);
+        final View[] gs = new View[1];
+        gs[0] = addRow("All apps size", gridCols + " across", () -> {
+            int n = gridCols == 4 ? 6 : gridCols - 1;
+            prefs.edit().putInt("grid_cols", n).apply();
+            setStatus(gs[0], n + " across");
+            reloadApps();
+        }, true);
         final View[] ao = new View[1];
         ao[0] = addRow("All apps order", APPS_ORDER[appsOrder()], () -> {
             int n = (appsOrder() + 1) % APPS_ORDER.length;
@@ -3869,40 +5227,25 @@ public class HomeActivity extends Activity {
             setStatus(ao[0], APPS_ORDER[n]);
             reloadApps();
         }, true);
-        final View[] ms = new View[1];
-        ms[0] = addRow("RAM and storage", meters.getVisibility() == View.VISIBLE ? "Shown" : "Hidden", () -> {
-            boolean show = meters.getVisibility() != View.VISIBLE;
-            prefs.edit().putBoolean("meters", show).apply();
-            meters.setVisibility(show ? View.VISIBLE : View.GONE);
-            if (show) meters.update();
-            setStatus(ms[0], show ? "Shown" : "Hidden");
-        }, true);
-        final View[] sc = new View[1];
-        sc[0] = addRow("Live scores", scoresLabel(), () -> {
-            String[] order = {"both", "cricket", "football", "off"};
-            String next = order[(Arrays.asList(order).indexOf(scores()) + 1) % order.length];
-            prefs.edit().putString("scores", next).apply();
-            setStatus(sc[0], scoresLabel());
-            updateScore();
-            chanSignature = "";
-            showChannels(appChannels);
-            refreshOnline();
-        }, true);
-        if (!scores().equals("off") && !scores().equals("cricket")) addRow("Football leagues", football.leagues().size() + " on",
-                () -> openFootballLeagues(0), false);
-        addRow("Channels", null, this::openChannelsEditor, false);
         int hiddenCount = hiddenApps().size();
         if (hiddenCount > 0) addRow("Hidden apps", String.valueOf(hiddenCount), this::openHiddenApps, false);
-        addRow("Remote keys", remoteKeysLabel(),
-                this::openRemoteKeys, false);
-        final View[] adb = new View[1];
-        adb[0] = addRow("Network debugging", "Checking…", this::openNetworkDebugging, false);
-        checkNetworkDebugging(st -> { if (adb[0].isAttachedToWindow()) setStatus(adb[0], st); });
-        final View[] wake = new View[1];
-        wake[0] = addRow("Talkies at power-on", wakeLabel(), () -> {
-            if (!SleepService.isRunning()) { needsTurnOffSetup(); return; }
-            prefs.edit().putString("home_at_power_on", SleepService.homeOnWake(this) ? "boot" : "always").apply();
-            setStatus(wake[0], wakeLabel());
+        // Only on a TV that has phone apps: elsewhere the setting would change nothing.
+        int phone = phoneOnlyApps();
+        final View[] pa = new View[1];
+        if (phone > 0) pa[0] = addRow("Phone apps", phoneAppsLabel(phone), () -> {
+            prefs.edit().putBoolean("phone_apps", !prefs.getBoolean("phone_apps", true)).apply();
+            setStatus(pa[0], phoneAppsLabel(phone));
+            reloadApps();
+        }, true);
+        // Only on a TV: a streaming box has no inputs of its own.
+        if (!ports().isEmpty()) addRow("Inputs on Home", homeInputs().isEmpty() ? null : homeInputs().size() + " on Home",
+                this::openHomeInputs, false);
+        if (!ports().isEmpty()) addRow("Edit inputs", null, this::openEditInputs, false);
+        final View[] inc = new View[1];
+        if (!ports().isEmpty()) inc[0] = addRow("A device turns on", prefs.getBoolean("incoming", true) ? "Offer to switch" : "Nothing", () -> {
+            boolean on = !prefs.getBoolean("incoming", true);
+            prefs.edit().putBoolean("incoming", on).apply();
+            setStatus(inc[0], on ? "Offer to switch" : "Nothing");
         }, true);
         final View[] ports = new View[1];
         ports[0] = addRow("Empty inputs", prefs.getBoolean("inputs_connected_only", false) ? "Under More inputs" : "Shown", () -> {
@@ -3910,6 +5253,13 @@ public class HomeActivity extends Activity {
             prefs.edit().putBoolean("inputs_connected_only", only).apply();
             setStatus(ports[0], only ? "Under More inputs" : "Shown");
         }, true);
+        addMenuHeading("Remote and power");
+        addRow("Remote keys", remoteKeysLabel(),
+                this::openRemoteKeys, false);
+        powerOnRow = addRow("At power-on", wakeLabel(), () -> {
+            if (!SleepService.isRunning()) { needsTurnOffSetup(); return; }
+            openPowerOn();
+        }, false);
         // Switch between Talkies and another launcher with Android's Home app chooser.
         // Google TV keeps its own launcher as the home app whatever is picked, so there Talkies has Home through its
         // Accessibility switch: that's what to turn off to use another home screen.
@@ -3932,29 +5282,79 @@ public class HomeActivity extends Activity {
             start(i);
         }, false);
         else addRow("Home app", currentHomeName(), () -> start(new Intent(Settings.ACTION_HOME_SETTINGS)), false);
-        addRow("Wallpaper", wallpaperLabel(), this::openWallpaperMenu, false);
         addRow("Control Center shortcuts", null, this::openShortcuts, false);
-        final View[] anim = new View[1];
-        anim[0] = addRow("Apps open from their tile", prefs.getBoolean("open_animation", true) ? "On" : "Off", () -> {
-            boolean on = !prefs.getBoolean("open_animation", true);
-            prefs.edit().putBoolean("open_animation", on).apply();
-            setStatus(anim[0], on ? "On" : "Off");
-        }, true);
-        // Off by default: looking a video up means sending its title and channel to YouTube.
-        final View[] yt = new View[1];
-        yt[0] = addRow("Sharp YouTube pictures", prefs.getBoolean("youtube_art", false) ? "On" : "Off", () -> {
-            boolean on = !prefs.getBoolean("youtube_art", false);
-            prefs.edit().putBoolean("youtube_art", on).apply();
-            setStatus(yt[0], on ? "On" : "Off");
-            if (on) refreshOnline();
-        }, true);
-        final View[] up = new View[1];
-        up[0] = addRow("Updates", SelfUpdate.summary(this), () -> SelfUpdate.checkAndInstall(this, st -> runOnUiThread(() -> {
-            if (up[0].isAttachedToWindow()) setStatus(up[0], st);
-        })), true);
+        addMenuHeading("Talkies");
+        addRow("Keys and location", null, () -> openKeysAndLocation(0), false);
+        addRow("Weather city", cityName() == null ? "Your own" : cityName(), () -> openCityPicker(0), false);
+        addUpdatesRow();
+        final View[] adb = new View[1];
+        adb[0] = addRow("Network debugging", "Checking…", this::openNetworkDebugging, false);
+        checkNetworkDebugging(st -> { if (adb[0].isAttachedToWindow()) setStatus(adb[0], st); });
         addRow("Developer", DEV_NAME, this::showDeveloper, true);
         addRow("About", null, this::openAbout, false);
         showMenu(350);
+    }
+
+    /** How many installed apps have a phone launcher entry but no TV one (Talkies settings → Phone apps). */
+    private int phoneOnlyApps() {
+        Set<String> tv = new HashSet<>(), phone = new HashSet<>();
+        for (ResolveInfo ri : pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER), 0)) {
+            tv.add(ri.activityInfo.packageName);
+        }
+        for (ResolveInfo ri : pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)) {
+            String p = ri.activityInfo.packageName;
+            if (!tv.contains(p) && !p.equals(getPackageName())) phone.add(p);
+        }
+        return phone.size();
+    }
+
+    private String phoneAppsLabel(int n) {
+        return (prefs.getBoolean("phone_apps", true) ? "Shown" : "Hidden") + "  ·  " + n + (n == 1 ? " app" : " apps");
+    }
+
+    private String languagesLabel() {
+        Set<String> chosen = trending.languages();
+        if (chosen.isEmpty()) return "All";
+        List<String> names = new ArrayList<>();
+        for (String c : chosen) names.add(Trending.languageName(c));
+        return String.join(", ", names);
+    }
+
+    /**
+     * Talkies settings → Picks languages: the languages Trending and New in … show, from those the country's lists
+     * bring up. OK on one shows only the ones you choose; OK again leaves it out; All languages goes back to all.
+     */
+    /** Talkies settings → Picks from (India): TMDB, needing your key, or StreamRadar's Top 10s, needing none. */
+    private String picksFromLabel() {
+        if (Trending.RADAR.equals(trending.source())) return "StreamRadar";
+        return Keys.read(this, Keys.TMDB) == null ? "TMDB (needs a key)" : "TMDB";
+    }
+
+    private void openPicksLanguages() {
+        List<String> codes = new ArrayList<>(trending.seenLanguages());
+        for (String c : trending.languages()) if (!codes.contains(c)) codes.add(c);
+        beginMenu(settingsAt, codes.isEmpty() ? "Picks languages  ·  they show after the picks first load"
+                : "Picks languages  ·  OK on one to show only the ones you choose");
+        List<View> rows = new ArrayList<>();
+        Runnable mark = () -> {
+            Set<String> chosen = trending.languages();
+            setStatus(rows.get(0), chosen.isEmpty() ? "On" : null);
+            for (int i = 0; i < codes.size(); i++) setStatus(rows.get(i + 1), chosen.contains(codes.get(i)) ? "On" : null);
+        };
+        rows.add(addRow("All languages", null, () -> {
+            trending.setLanguages(new java.util.LinkedHashSet<>());
+            mark.run();
+            refreshOnline();
+        }, true));
+        for (String code : codes) rows.add(addRow(Trending.languageName(code), null, () -> {
+            Set<String> chosen = trending.languages();
+            if (!chosen.remove(code)) chosen.add(code);
+            trending.setLanguages(chosen);
+            mark.run();
+            refreshOnline();
+        }, true));
+        mark.run();
+        showMenu(380);
     }
 
     private boolean ownWallpaper() {
@@ -3965,7 +5365,8 @@ public class HomeActivity extends Activity {
     }
 
     private String wallpaperLabel() {
-        if (ownWallpaper()) return "Your picture";
+        String folder = prefs.getString("wall_folder_name", null);
+        if (ownWallpaper()) return folder != null ? "A picture a day from " + folder : "Your picture";
         return prefs.getBoolean("bing_wallpaper", false) ? "Picture of the day" : "Off";
     }
 
@@ -3984,6 +5385,7 @@ public class HomeActivity extends Activity {
             setStatus(bing[0], on ? (ownWallpaper() ? "On · after your picture" : "On") : "Off");
         }, true);
         if (ownWallpaper()) addRow("Remove your picture", prefs.getBoolean("bing_wallpaper", false) ? "back to Bing's" : null, () -> {
+            stopFolder();
             removeOwnWallpaper();
             loadWallpaper();
             Toast.makeText(this, "Your picture is removed", Toast.LENGTH_SHORT).show();
@@ -4038,12 +5440,18 @@ public class HomeActivity extends Activity {
     /** After a picture was saved for {@code pkg} (null: the wallpaper): show it, and say so. */
     private void pictureSaved(String pkg, boolean ok) {
         if (pkg == null) {
+            if (ok) stopFolder();
             Toast.makeText(this, ok ? "Your picture is the wallpaper now" : "Couldn't use that picture", Toast.LENGTH_SHORT).show();
             if (ok) loadWallpaper();
             return;
         }
         Toast.makeText(this, ok ? "Your picture is on " + labelOf(pkg) + " now" : "Couldn't use that picture", Toast.LENGTH_SHORT).show();
         if (ok) reloadApps();
+    }
+
+    /** Back to one picture: the folder no longer changes it. */
+    private void stopFolder() {
+        prefs.edit().remove("wall_folder").remove("wall_folder_name").remove("wall_folder_last").remove("wall_folder_day").apply();
     }
 
     private void removeOwnWallpaper() {
@@ -4155,6 +5563,7 @@ public class HomeActivity extends Activity {
 
     private static final int REQ_PICTURES = 9;
     private static final int MAX_PICTURES = 60;
+    private static final int MAX_FOLDERS = 6;
 
     /** Reading pictures: Android 13 and later ask for photos only, earlier versions for all of storage. */
     private String picturesPermission() {
@@ -4171,19 +5580,20 @@ public class HomeActivity extends Activity {
             return;
         }
         background.execute(() -> {
-            List<String[]> found = new ArrayList<>();  // uri, name, folder
+            List<String[]> found = new ArrayList<>();  // uri, name, folder, volume, folder id
             java.util.Set<String> volumes = Build.VERSION.SDK_INT >= 29
                     ? android.provider.MediaStore.getExternalVolumeNames(this) : java.util.Collections.singleton("external");
             List<long[]> order = new ArrayList<>();
             for (String vol : volumes) {
                 Uri base = android.provider.MediaStore.Images.Media.getContentUri(vol);
                 String[] cols = {android.provider.MediaStore.Images.Media._ID, android.provider.MediaStore.Images.Media.DISPLAY_NAME,
-                        android.provider.MediaStore.Images.Media.BUCKET_DISPLAY_NAME, android.provider.MediaStore.Images.Media.DATE_MODIFIED};
+                        android.provider.MediaStore.Images.Media.BUCKET_DISPLAY_NAME, android.provider.MediaStore.Images.Media.DATE_MODIFIED,
+                        android.provider.MediaStore.Images.Media.BUCKET_ID};
                 try (android.database.Cursor c = getContentResolver().query(base, cols, null, null,
                         android.provider.MediaStore.Images.Media.DATE_MODIFIED + " DESC")) {
                     while (c != null && c.moveToNext() && found.size() < MAX_PICTURES * 4) {
                         found.add(new String[]{android.content.ContentUris.withAppendedId(base, c.getLong(0)).toString(),
-                                c.getString(1), c.getString(2) == null ? "" : c.getString(2)});
+                                c.getString(1), c.getString(2) == null ? "" : c.getString(2), vol, c.getString(4)});
                         order.add(new long[]{c.getLong(3), found.size() - 1});
                     }
                 } catch (RuntimeException e) {
@@ -4200,16 +5610,23 @@ public class HomeActivity extends Activity {
     private void showTvPictures(List<String[]> pics) {
         final String target = pictureFor;
         beginMenu(settingsAt, pics.isEmpty() ? "No pictures on this TV"
-                : (target == null ? "Wallpaper" : labelOf(target)) + "  ·  OK on a picture to use it");
+                : target == null ? "Wallpaper  ·  OK on a folder or a picture" : labelOf(target) + "  ·  OK on a picture to use it");
         if (target != null) anchorToApp(target);
         if (pics.isEmpty()) {
             addRow("Copy pictures to Pictures or Downloads, or plug in a USB drive", null, () -> { }, true);
             showMenu(460);
             return;
         }
+        // The wallpaper can also come from a folder: a new picture from it each day. Each folder shows its newest.
+        java.util.Set<String> folders = new java.util.HashSet<>();
+        if (target == null) for (String[] pic : pics) {
+            if (pic[4] == null || folders.size() >= MAX_FOLDERS || !folders.add(pic[3] + "/" + pic[4])) continue;
+            String name = pic[2].isEmpty() ? "Pictures" : pic[2];
+            addThumb(addRow(name, "a new picture each day", () -> useFolder(pic[3], pic[4], name), false), Uri.parse(pic[0]));
+        }
         for (String[] pic : pics) {
             Uri uri = Uri.parse(pic[0]);
-            LinearLayout row = (LinearLayout) addRow(pic[1], pic[2], () -> {
+            View row = addRow(pic[1], pic[2], () -> {
                 if (target == null) Toast.makeText(this, "Setting the wallpaper…", Toast.LENGTH_SHORT).show();
                 background.execute(() -> {
                     boolean ok = savePicture(() -> {
@@ -4219,20 +5636,81 @@ public class HomeActivity extends Activity {
                     runOnUiThread(() -> pictureSaved(target, ok));
                 });
             }, false);
-            ImageView thumb = new ImageView(this);
-            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            thumb.setBackground(rounded(theme.tileBg, 0, 4));
-            thumb.setClipToOutline(true);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(64), px(36));
-            lp.setMarginEnd(px(12));
-            lp.gravity = Gravity.CENTER_VERTICAL;
-            row.addView(thumb, 0, lp);
-            background.execute(() -> {
-                Bitmap t = thumbnail(uri);
-                if (t != null) runOnUiThread(() -> thumb.setImageBitmap(t));
-            });
+            addThumb(row, uri);
         }
         showMenu(520);
+    }
+
+    /** A small preview of the picture at the start of its row. */
+    private void addThumb(View row, Uri uri) {
+        ImageView thumb = new ImageView(this);
+        thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        thumb.setBackground(rounded(theme.tileBg, 0, 4));
+        thumb.setClipToOutline(true);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(64), px(36));
+        lp.setMarginEnd(px(12));
+        lp.gravity = Gravity.CENTER_VERTICAL;
+        ((LinearLayout) row).addView(thumb, 0, lp);
+        background.execute(() -> {
+            Bitmap t = thumbnail(uri);
+            if (t != null) runOnUiThread(() -> thumb.setImageBitmap(t));
+        });
+    }
+
+    /** Wallpaper → From this TV → a folder: its first picture now, then the next one each day. */
+    private void useFolder(String volume, String id, String name) {
+        prefs.edit().putString("wall_folder", volume + "/" + id).putString("wall_folder_name", name)
+                .remove("wall_folder_last").remove("wall_folder_day").apply();
+        Toast.makeText(this, "Setting the wallpaper…", Toast.LENGTH_SHORT).show();
+        nextFromFolder(() -> Toast.makeText(this, ownWallpaper() ? "A new picture from " + name + " each day"
+                : "Couldn't use a picture from " + name, Toast.LENGTH_SHORT).show());
+    }
+
+    private boolean folderBusy;
+
+    /**
+     * Once a day, the next picture from the wallpaper folder (in name order, round again after the last), saved like
+     * one you picked. A folder that's gone (a USB drive unplugged) leaves the last picture up.
+     */
+    private void nextFromFolder(Runnable then) {
+        String folder = prefs.getString("wall_folder", null);
+        java.util.Calendar now = java.util.Calendar.getInstance();
+        int today = now.get(java.util.Calendar.YEAR) * 1000 + now.get(java.util.Calendar.DAY_OF_YEAR);
+        if (folder == null || folderBusy || prefs.getInt("wall_folder_day", 0) == today) return;
+        folderBusy = true;
+        String last = prefs.getString("wall_folder_last", null);
+        background.execute(() -> {
+            String next = null;
+            try {
+                int cut = folder.lastIndexOf('/');
+                Uri base = android.provider.MediaStore.Images.Media.getContentUri(folder.substring(0, cut));
+                List<String> uris = new ArrayList<>();
+                try (android.database.Cursor c = getContentResolver().query(base, new String[]{android.provider.MediaStore.Images.Media._ID},
+                        android.provider.MediaStore.Images.Media.BUCKET_ID + "=?", new String[]{folder.substring(cut + 1)},
+                        android.provider.MediaStore.Images.Media.DISPLAY_NAME + " ASC")) {
+                    while (c != null && c.moveToNext()) uris.add(android.content.ContentUris.withAppendedId(base, c.getLong(0)).toString());
+                }
+                if (!uris.isEmpty()) next = uris.get((uris.indexOf(last) + 1) % uris.size());
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Couldn't read the wallpaper folder: " + e);
+            }
+            final String pick = next;
+            boolean ok = pick != null && savePicture(() -> {
+                try { return getContentResolver().openInputStream(Uri.parse(pick)); }
+                catch (java.io.FileNotFoundException e) { throw new RuntimeException(e); }
+            }, null);
+            runOnUiThread(() -> {
+                folderBusy = false;
+                // Tried today either way: a folder that's gone is tried again tomorrow, not every minute.
+                if (prefs.getString("wall_folder", "").equals(folder)) {
+                    SharedPreferences.Editor e = prefs.edit().putInt("wall_folder_day", today);
+                    if (ok) e.putString("wall_folder_last", pick);
+                    e.apply();
+                }
+                if (ok) loadWallpaper();
+                if (then != null) then.run();
+            });
+        });
     }
 
     private Bitmap thumbnail(Uri uri) {
@@ -4250,8 +5728,38 @@ public class HomeActivity extends Activity {
         }
     }
 
-    /** After a restart only (the default), or every time the TV wakes from standby too. */
-    private String wakeLabel() { return SleepService.homeOnWake(this) ? "Every time" : "After a restart"; }
+    /** Talkies after a restart only (the default), Talkies every time the TV wakes too, or an app or input. */
+    private String wakeLabel() {
+        if (SleepService.openAtPowerOn(this) != null) return prefs.getString("power_on_label", "An app");
+        return SleepService.homeOnWake(this) ? "Talkies, every time" : "Talkies, after a restart";
+    }
+
+    /**
+     * Talkies settings → At power-on: Talkies after a restart, Talkies each time the TV wakes, or an app or input you
+     * choose (HDMI 1, with the set-top box on it), each time. An idea from Aerial (aerial-tv, MIT).
+     */
+    private void openPowerOn() {
+        beginMenu(settingsAt, "At power-on  ·  now: " + wakeLabel());
+        addRow("Talkies, after a restart", "the TV's last input or app after standby", () -> setPowerOn("boot", null, null), false);
+        addRow("Talkies, every time", null, () -> setPowerOn("always", null, null), false);
+        for (Port port : shownPorts()) addRow(port.row(), null, () -> setPowerOn("open", AppEntry.INPUT + port.id, port.row()), false);
+        addRow("Open an app", null, this::openPowerOnApps, false);
+        showMenu(460);
+    }
+
+    private void openPowerOnApps() {
+        beginMenu(settingsAt, "Open which app at power-on?");
+        for (AppEntry a : apps) if (a.input == null) addRow(a.label, null, () -> setPowerOn("open", a.pkg, a.label), false);
+        showMenu(360);
+    }
+
+    private void setPowerOn(String mode, String open, String label) {
+        prefs.edit().putString("home_at_power_on", mode).putString("power_on_open", open).putString("power_on_label", label).apply();
+        Toast.makeText(this, "At power-on: " + wakeLabel(), Toast.LENGTH_SHORT).show();
+        openTalkiesSettings(settingsAt);
+        int at = menuItems.indexOf(powerOnRow);
+        if (at >= 0) focusMenu(at);
+    }
 
     /** Credits for the data Talkies shows; TMDB's wording is what its terms ask for. */
     private void openAbout() {
@@ -4259,17 +5767,20 @@ public class HomeActivity extends Activity {
         try { version = " " + pm.getPackageInfo(getPackageName(), 0).versionName; } catch (PackageManager.NameNotFoundException ignored) { }
         beginMenu(settingsAt, "Talkies" + version + "  ·  MIT License");
         String[][] credits = {
+                {"Picks in India without a key", "StreamRadar India"},
                 {"Weather", "Open-Meteo.com (CC BY 4.0)"},
+                {"Weather backup", "MET Norway (CC BY 4.0)"},
                 {"Airport temperatures", "aviationweather.gov (NOAA)"},
-                {"Cricket scores", "CricketData.org"},
-                {"Football scores", "ESPN (public scoreboard)"},
+                {"Scores", "ESPN (public scoreboard)"},
                 {"Speed test", "Cloudflare"},
                 {"Code from", "tv-vibehack, CleanYourTV, Free My TV, Matinee, Luma, GlassLauncher"},
                 {"Font", "Outfit (SIL OFL)"},
         };
+        addRow("What's new", null, this::openWhatsNew, false);
         addRow("Made by", "Raju  ·  TechPP (techpp.com)", () -> { }, true);
         addRow("Source code", "github.com/rajupp/talkies", () -> { }, true);
         addRow("Support Talkies", "buymeacoffee.com/rajupp", this::showSupport, true);
+        addRow("Report a problem", "QR code", this::showReport, true);
         // TMDB's terms ask for its logo with the credit: smaller than anything identifying Talkies.
         LinearLayout picks = (LinearLayout) addRow("Picks", null, () -> { }, true);
         ImageView logo = new ImageView(this);
@@ -4295,7 +5806,7 @@ public class HomeActivity extends Activity {
 
     /**
      * Control Center → Recent apps (or a remote button set to it): the apps you opened last, newest first, each with
-     * its banner. OK opens one. At the end, close them all (apps in the background only, never system apps).
+     * its banner. OK opens one.
      */
     private void openRecents() {
         if (menuScroll.getVisibility() == View.VISIBLE) closeMenu();
@@ -4330,21 +5841,7 @@ public class HomeActivity extends Activity {
             row.addView(thumb, 0, lp);
             shown++;
         }
-        if (shown == 0) {
-            addRow("Apps you open show up here", null, () -> { }, true);
-        } else {
-            final View[] close = new View[1];
-            close[0] = addRow("Close them all", "frees memory", () -> {
-                ActivityManager am = getSystemService(ActivityManager.class);
-                long before = availableMb();
-                for (String pkg : RecentApps.list(this)) {
-                    try {
-                        if ((pm.getApplicationInfo(pkg, 0).flags & ApplicationInfo.FLAG_SYSTEM) == 0) am.killBackgroundProcesses(pkg);
-                    } catch (PackageManager.NameNotFoundException ignored) { }
-                }
-                close[0].postDelayed(() -> setStatus(close[0], "Freed " + Math.max(0, availableMb() - before) + " MB"), 800);
-            }, true);
-        }
+        if (shown == 0) addRow("Apps you open show up here", null, () -> { }, true);
         showMenu(460);
     }
 
@@ -4605,13 +6102,6 @@ public class HomeActivity extends Activity {
         start(i);
     }
 
-    private long availableMb() {
-        ActivityManager am = getSystemService(ActivityManager.class);
-        ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
-        am.getMemoryInfo(mi);
-        return mi.availMem / (1024 * 1024);
-    }
-
     /** "12.4 GB free of 32 GB": the TV's own storage, where apps and their data live. */
     private String storageLine() {
         try {
@@ -4662,22 +6152,6 @@ public class HomeActivity extends Activity {
         return false;
     }
 
-    /** Stops cached background apps (never system apps) and shows how much memory came back. */
-    private void freeMemory(View row) {
-        ActivityManager am = getSystemService(ActivityManager.class);
-        long before = availableMb();
-        setStatus(row, "Freeing…");
-        for (ApplicationInfo ai : pm.getInstalledApplications(0)) {
-            if ((ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0) continue;
-            if (ai.packageName.equals(getPackageName())) continue;
-            am.killBackgroundProcesses(ai.packageName);
-        }
-        row.postDelayed(() -> {
-            long after = availableMb();
-            setStatus(row, "Freed " + Math.max(0, after - before) + " MB · " + after + " MB free");
-        }, 800);
-    }
-
     // ---------------------------------------------------------------- network, wallpaper
 
     private void updateNetwork(NetworkCapabilities caps) {
@@ -4725,13 +6199,17 @@ public class HomeActivity extends Activity {
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inJustDecodeBounds = true;
         BitmapFactory.decodeFile(f.getPath(), o);
+        // Full size and full colour: at half size, or in 16-bit colour, a photo looks soft and skies band.
+        int screen = getResources().getDisplayMetrics().widthPixels;
         o.inSampleSize = 1;
-        while (o.outWidth / (o.inSampleSize * 2) >= 960) o.inSampleSize *= 2;
+        while (o.outWidth / (o.inSampleSize * 2) >= screen) o.inSampleSize *= 2;
         o.inJustDecodeBounds = false;
-        o.inPreferredConfig = Bitmap.Config.RGB_565;
         Bitmap bmp = BitmapFactory.decodeFile(f.getPath(), o);
         if (bmp != null) {
             wallFit = Legibility.of(bmp, Theme.of(false).scrimTop & 0x00FFFFFF, Theme.of(true).scrimTop & 0x00FFFFFF);
+            // Kept only where it's drawn, on the graphics side, once its veil is worked out: half the memory.
+            Bitmap gpu = bmp.copy(Bitmap.Config.HARDWARE, false);
+            if (gpu != null) { bmp.recycle(); bmp = gpu; }
             backdrop.setWallpaper(bmp);
             // A new photo may suit the other look (Auto), and always needs its own veil.
             day = isDayNow();
@@ -4749,6 +6227,7 @@ public class HomeActivity extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
+        watchInputs(true);
         ServiceRepair.restore(this);  // a force stop switched the accessibility service off: put it back
         IntentFilter t = new IntentFilter(Intent.ACTION_TIME_TICK);
         t.addAction(Intent.ACTION_TIME_CHANGED);
@@ -4809,6 +6288,7 @@ public class HomeActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
+        watchInputs(false);
         getContentResolver().unregisterContentObserver(watchNextChanged);
         root.removeCallbacks(rereadWatchNext);
         unregisterReceiver(timeReceiver);
@@ -4821,6 +6301,8 @@ public class HomeActivity extends Activity {
         super.onResume();
         tabs[2].setText("New in " + Region.name(Region.country(this)));  // the country can change (Region)
         inFront = true;
+        ScoreCard.homeShowing(true);
+        watchPlaying();
         root.post(this::snapRing);
         root.removeCallbacks(this.autoSlide);
         root.postDelayed(this.autoSlide, SLIDE_MS);
@@ -4883,6 +6365,8 @@ public class HomeActivity extends Activity {
         inFront = false;
         root.removeCallbacks(this.autoSlide);
         restartBar();
+        ScoreCard.homeShowing(false);
+        watchPlaying();   // stops following the player
     }
 
     /**
@@ -4895,12 +6379,17 @@ public class HomeActivity extends Activity {
             Log.i(TAG, "Refresh skipped: " + (!inFront ? "another app in front" : !hasWindowFocus() ? "screensaver or dialog on top" : "display off"));
             return;
         }
-        if (!scores().equals("off") && !scores().equals("football")) cricket.refreshIfStale(this::onMatches);
-        if (scores().equals("both") || scores().equals("football")) football.refreshIfStale(this::onFootball);
+        if (sportsOn.contains("cricket")) cricket.refreshIfStale(this::onMatches);
+        if (anyFootball()) football.refreshIfStale(this::onFootball);
         weather.refreshIfStale(this::onWeather);
         if (prefs.getBoolean("bing_wallpaper", false)) bing.refreshIfStale(this::loadWallpaper);
+        nextFromFolder(null);  // no network needed, but the same moments: a new day's picture while you can see it
         if (forYou) trending.refreshIfStale(this::onPicks);
         if (forYou) discover.refreshIfStale(this::onDiscover);
+        // Just updated: what's new, once (showNewsCard checks again when it's time).
+        if (zone != Z_MENU && WhatsNew.due(this, prefs)) root.postDelayed(this::showNewsCard, 1500);
+        // A new install, Home button not set up yet: once, after the service has had time to connect.
+        if (zone != Z_MENU && welcomeDue()) root.postDelayed(this::showWelcomeCard, 2500);
         // Once a day: is there a newer Talkies? Said once per version.
         background.execute(() -> {
             boolean news = SelfUpdate.checkIfStale(this);
@@ -4956,7 +6445,10 @@ public class HomeActivity extends Activity {
         focusDock(dockIdx);
         // A remote button set to "Inputs" (Control Center → Remote keys).
         String open = intent.getStringExtra(RemoteKeys.EXTRA_OPEN);
-        if (RemoteKeys.INPUTS.equals(open)) root.post(this::openInputs);
-        else if (RemoteKeys.RECENTS.equals(open)) root.post(this::openRecents);
+        if (open != null) {   // the menu places itself by the top icons: not while the page is still gliding back up to them
+            pageSpring.snap(pageSpring.target);
+            page.setTranslationY(-pageSpring.value);
+        }
+        if (open != null) root.post(() -> openFromKey(open));
     }
 }

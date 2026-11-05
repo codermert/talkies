@@ -35,7 +35,7 @@ everything they do can also be done on the TV, in Talkies settings.
 | All apps | One row up (the last channel from the top row) | One row down | Next app in the row | Launch (hold: dock, Move, Change image, Hide, Uninstall, App info) | Dock |
 | Inputs / Control Center / settings | Previous (from the first, the last) | Next (from the last, the first) | Close | Choose | Close |
 
-**Home** always brings you back to the dock, at the top, on the Trending tab.
+**Home** always brings you back to the dock, at the top, on the Trending tab. **Holding Home** opens Google TV's dashboard (Screensaver, Inputs, Picture, Wi-Fi…), as it does without Talkies.
 
 **Navigation sounds:** Talkies plays Android's own click and move sounds when the TV's **System sounds** switch is on
 (Settings → Display & sound, or Sound), and is silent when it's off, like the rest of the TV.
@@ -53,15 +53,14 @@ you set once is in **Talkies settings**, at the top.
 | Weather | The current weather on the right; OK shows the next six hours, and OK again the next six days (high / low and conditions) |
 | Sleep timer | Cycles Off → 30 → 60 → 90 min; the time left shows on the right. A minute before, a card counts down over whatever is playing: **OK** gives 15 more minutes |
 | Turn off now | Puts the TV in standby |
-| Free up memory | Stops background apps (never system apps) and shows how much RAM came back |
-| Recent apps | The apps you opened through Talkies (dock, All apps, picks, channels, remote buttons), newest first, with their banners; OK opens one, **Close them all** frees their memory. Also on a remote button: Remote keys → Recent apps |
+| Recent apps | The apps you opened through Talkies (dock, All apps, picks, channels, remote buttons), newest first, with their banners; OK opens one. Also on a remote button: Remote keys → Recent apps |
 | Storage | Shows the free space ("12.4 GB free of 32 GB"); OK opens the TV's storage settings |
 | Animations | Cycles the speed of every animation on the TV: 1× → 0.5× → Off. Faster makes menus and app switches feel snappier; Off also stills Talkies' own motion. Needs the `WRITE_SECURE_SETTINGS` grant (see [Google Assistant](#google-assistant-and-the-google-tv-launcher)) |
 | Network | Shows the Wi-Fi name (or Ethernet); OK opens Wi-Fi settings |
 | Speed test | A few seconds' download from Cloudflare's speed test; shows e.g. "206 Mbps" |
 | Bluetooth | Shows the connected speaker or headphones. OK lists your paired ones: OK on one connects or disconnects it; **Pair a new device** opens the TV's Bluetooth settings. Bluetooth can't be turned off here, since many remotes use it |
 | Sound output | Shows *TV speakers*, or *Soundbar connected* when one is on HDMI ARC (Android doesn't say whether it's the one playing), and opens the TV's sound settings: on Sony, Display & sound, where Audio output chooses the speakers |
-| Screensaver | Starts the TV's screensaver right away, the way Google Assistant does (or through Android's own shortcut). Not shown on devices that offer apps neither |
+| Screensaver | Starts the TV's screensaver right away (Talkies' own, if you picked it: see below), the way Google Assistant does (or through Android's own shortcut). Not shown on devices that offer apps neither |
 | Restart… | Opens the TV's own power menu, which asks before restarting. On some TVs (OnePlus) that menu puts the TV to sleep after 10 seconds if you choose nothing; Back closes it |
 
 ## Talkies settings
@@ -71,29 +70,51 @@ Control Center → **Talkies settings**, or **hold OK on the ⚙ icon** (a press
 | Row | What OK does |
 |---|---|
 | Finish setup | Only while a first-time step is left: lists them (the Home button's Accessibility switch, notification access, the Wi-Fi name and Watch Next permissions), and OK opens each one's switch or asks |
-| Keys and location | Your TMDB key (picks), CricketData key (scores) and weather area. **Send from your phone** shows a QR code: scan it with a phone on the same Wi-Fi and paste them into the page it opens (it works once, for 5 minutes, only on your home network, and the keys stay on the TV). Or type or paste each one; keys are tried with the service first and only saved if it accepts them. **Remove** clears one |
+| **Look** | |
 | Appearance | Cycles Auto (light by day, dark at night) → Light → Dark. With a wallpaper, Auto picks the look that suits the photo instead, and every look adds just enough veil behind the text to keep it readable |
-| For You | Shown or Hidden. Hidden removes the tabs and picks (the weather, time and date stay, larger), Up from the dock goes to the icons, and TMDB picks aren't fetched |
-| Hide spoilers | Off (default) or On. On: an episode you haven't started yet shows the show's own art in Continue instead of the app's still from that episode, or the still blurred when the app gives nothing else. Episodes you're partway through keep their still |
-| Dock apps | Every app, the dock's first (numbered): OK puts one in the dock or takes it out, the same as **Add to dock** and **Remove from dock** when you hold OK on an app. To change the order, hold OK on an app in the dock and choose **Move** |
-| Dock size | 5, 6, 7 (default), 8, 9 or 10 apps. The tiles grow or shrink so the dock always fills the screen's width; apps that no longer fit move to the front of All apps, and come back when it grows again |
-| All apps order | **Your order** (default: apps you moved with hold OK → Move stay put, the rest A to Z), **Recently opened** (the apps you last opened through Talkies first, the rest A to Z) or **A to Z**. In the two sorted orders only the dock's apps can be moved; the dock always keeps your order |
+| Wallpaper | A picture of your own **from your phone** (a QR code) or **from this TV** (pictures on the TV or a USB drive, or a folder for a new picture each day), Bing's **picture of the day** (checked every few hours while Talkies is in front), or **Remove your picture**. See [Change the wallpaper](#change-the-wallpaper) |
+| Background | With no wallpaper, what's behind Home. **App colour** (default): a soft gradient in the focused app's colour. **Blurred art**: the focused pick or Continue card's own picture, blurred; apps in the dock keep their colour. *Not in use* with a wallpaper or Lite effects |
+| Screensaver | **Clock** (default), **Board**, **Wallpaper** or **Picks**: what Talkies' screensaver shows ([Screensaver](#screensaver-and-whats-playing)). *Not in use* until you pick Talkies in the TV's Screen saver settings; *none set* in Wallpaper with no wallpaper; *may be slow* in Picks on a TV with little memory |
+| TV's screensaver | **Talkies** or **Not Talkies**: which screensaver the TV uses. OK switches it with the `WRITE_SECURE_SETTINGS` grant; without it, shows how to choose it |
+| Screensaver message | Two short lines for the screensaver ("Dinner at 8"), typed on your phone: a QR code opens the page, which shows the message as it is. Send both lines empty to remove it |
+| Quiet hours | When the screensaver dims: **11 PM – 7 AM** (default), 10 PM – 6 AM, Midnight – 7 AM, or Off |
+| Focus | How the selected tile or card shows. **Lift** (default): it grows and lifts on a soft shadow. **Ring**: a white outline as well, easier to see on a busy wallpaper |
+| Effects | **Auto** (default): Lite on a TV with under 1.6 GB of memory, or one that turns out slow (Talkies times its frames the first few times you move with the arrows), Full elsewhere. **Full**: the background glows in the focused app's colour and focus and scrolling glide. **Lite**: no glow, and focus and scrolling move at once, which keeps slow TVs responsive |
 | RAM and storage | Shown (default) or Hidden: the two meters beside the icon buttons, with free RAM and free storage, updated every minute |
-| Live scores | Cricket and football (default), Cricket, Football or Off: what the score line and the score rows show |
-| Football leagues | The leagues the Football row follows; see [Football](#football) |
-| Channels | Choose which app channels show below the dock, and their order |
-| Hidden apps | Shown once you've hidden an app: the apps you hid; OK shows one again |
-| Remote keys | Give a remote button another job: open an app, Inputs, Recent apps, Talkies, or nothing. **Add a key**, press the button, choose. Once it has a job, **When held** gives it a second one for holding it (over half a second). Navigation, OK, Back, Home, volume and power can't be changed. A button Android has no name for shows as *Button 0x…* (its code from the remote). If a button still just does its own job while Talkies waits for it (the app buttons on some TVs), the TV's software handles it before Android sees it, and no app can change it. **Remote keys: On or Off** at the top: on once you've given a button a job (or whenever you switch it on). On some TVs, while it's on, holding Volume changes it only one step per press, in every app: Android stops repeating a held button once an app watches the remote. Off, holding Volume works, and Home reaches Talkies with Google TV's home showing for a moment first |
-| Network debugging | "On · port 5555" while computers on your network can control the TV over ADB (how Talkies was installed). **Turn off** (needs the permission below) or open Developer options; turning it on again is done in Developer options |
-| Talkies at power-on | **After a restart** (default), or **Every time**: also when the TV wakes from standby into the last HDMI input or app. Pressing a button as it wakes keeps what's on screen |
-| Empty inputs | **Shown** (default), or **Under More inputs**: Inputs lists only ports with something plugged in, and a More inputs row brings back the rest |
-| Wallpaper | A picture of your own **from your phone** (a QR code) or **from this TV** (pictures on the TV or a USB drive), Bing's **picture of the day** (checked every few hours while Talkies is in front), or **Remove your picture**. See [Change the wallpaper](#change-the-wallpaper) |
-| Control Center shortcuts | Which screen Network, Bluetooth, Sound output and Storage open in Control Center: the TV's default, or any screen its settings apps offer (likely matches first, **Show every screen** for the rest). Useful where the TV keeps the useful page elsewhere |
 | Apps open from their tile | On by default: an app's window grows out of the tile or card you chose. It's Android's normal opening animation, started from the tile, so it costs nothing extra |
-| Home app | Shows the current home screen and opens Android's *Default home app* chooser (on Google TV the choice doesn't stick; see [Use another home screen](#use-another-home-screen)) |
+| **For You and scores** | |
+| Country | **Automatic** (where the TV is, by its time zone), about 25 common countries, or **More countries** (A to Z): the country the picks and scores are for; see [Which country](#trending-and-new-in-) |
+| For You | Shown or Hidden. Hidden removes the tabs and picks (the weather, time and date stay, larger), Up from the dock goes to the icons, and TMDB picks aren't fetched |
+| Picks from | India only: TMDB or StreamRadar, where the picks come from ([In India without a key](#in-india-without-a-key)) |
+| Picks languages | Only while For You is shown: **All** (the default) or the languages you choose for Trending and New in …. See [Languages](#languages) |
+| Hide spoilers | Off (default) or On. On: an episode you haven't started yet shows the show's own art in Continue instead of the app's still from that episode, or the still blurred when the app gives nothing else. Episodes you're partway through keep their still |
 | Sharp YouTube pictures | Off by default. On: YouTube cards in Continue get YouTube's 1280-pixel thumbnails, looked up by title and channel |
+| Sports | Cricket, Football, NBA and NFL, each On or Off: what the score line and the score rows show. Cricket and football to start, plus the NBA and NFL in the US and Canada |
+| Football leagues | Only while Football is on: the leagues the Football row follows; see [Football](#football) |
+| Continue apps | Each app with something to continue: Shown or Hidden, for the Continue tab and the Watch Next row |
+| Channels | Choose which app channels show below the dock, and their order |
+| **Apps and inputs** | |
+| Dock apps | Every app, the dock's first (numbered): OK puts one in the dock or takes it out, the same as **Add to dock** and **Remove from dock** when you hold OK on an app. To change the order, hold OK on an app in the dock and choose **Move** |
+| Dock size | 4, 5, 6, 7 (default), 8, 9 or 10 apps. The tiles grow or shrink so the dock always fills the screen's width; apps that no longer fit move to the front of All apps, and come back when it grows again |
+| All apps button | **Shown** (default) or Hidden: the round button at the end of the dock. Hidden, the dock's apps fill its width; All apps is still below, further down the page |
+| All apps size | 6 (default), 5 or 4 across. Fewer across means larger tiles |
+| All apps order | **Your order** (default: apps you moved with hold OK → Move stay put, the rest A to Z), **Recently opened** (the apps you last opened through Talkies first, the rest A to Z) or **A to Z**. In the two sorted orders only the dock's apps can be moved; the dock always keeps your order |
+| Hidden apps | The apps you hid, and the manuals, updaters, store demos and factory tools TV makers install (hidden from the start; the list comes from Home Deck); OK shows one again |
+| Phone apps | Only on a TV with any (with how many): **Shown** (default) or Hidden: apps with no TV version (Chrome, MacroDroid… installed from a file) in All apps, with a tile made from their icon. Hidden leaves them out, for TVs that list odd system screens this way; hold OK → **Hide** hides just one |
+| Inputs on Home | Only on a TV with HDMI or AV ports: each port, with the device on it when it says (*HDMI 2 · PlayStation 5*). OK puts it on Home as a tile in the dock's first spot, named after that device, which switches the TV to it in one press; OK again takes it off. Hold OK on the tile to move it, give it a picture, or **Remove from Home** |
+| Edit inputs | Only on a TV with HDMI or AV ports: each port and Live TV. OK on one: **Name** (your own, like "Living room box"; Remove goes back to its own) and **In Inputs** (Shown or Hidden: a soundbar's ARC port, or Live TV without an aerial). Hidden ones stay out of Inputs, Inputs on Home and At power-on |
+| A device turns on | **Offer to switch** (default) or **Nothing**. With Home on screen, a console or box on HDMI that switches on gets a small card: "PlayStation 5 is on · Switch to HDMI 2". It goes away after 15 seconds. Many devices switch the TV to themselves anyway (HDMI-CEC); this is for the ones that don't |
+| Empty inputs | **Shown** (default), or **Under More inputs**: Inputs lists only ports with something plugged in, and a More inputs row brings back the rest |
+| **Remote and power** | |
+| Remote keys | Give a remote button another job: open an app, go to one input, Previous app, Resume watching (the first Continue card), Inputs, Recent apps, Control Center, Talkies settings, TV settings, Wi-Fi, Sound output, Bluetooth, Play / pause, Mute, Screensaver, Turn off, Talkies, or nothing. **Add a key**, press the button, choose. Once it has a job, **When held** gives it a second one for holding it (over half a second). Navigation, OK, Back, Home, volume and power can't be changed. A button Android has no name for shows as *Button 0x…* (its code from the remote). If a button still just does its own job while Talkies waits for it (the app buttons on some TVs), the TV's software handles it before Android sees it, and no app can change it. **Remote keys: On or Off** at the top, On by default: Home goes straight to Talkies. On some TVs, while it's on, holding Volume changes it only one step per press, in every app: Android stops repeating a held button once an app watches the remote, and the TV acts on Volume before any app sees it, so no app can repeat it either. Off, holding Volume works, and Home reaches Talkies with Google TV's home showing for a moment first |
+| At power-on | What comes up when the TV turns on. **Talkies, after a restart** (default; after standby the TV shows its last input or app), **Talkies, every time**, one of the TV's inputs (*HDMI 1 · Set-top box*), or **Open an app**: that input or app comes up after a restart and every time the TV wakes. Pressing a button as it wakes keeps what's on screen. Needs the Accessibility switch |
+| Home app | Shows the current home screen and opens Android's *Default home app* chooser (on Google TV the choice doesn't stick; see [Use another home screen](#use-another-home-screen)) |
+| Control Center shortcuts | Which screen Network, Bluetooth, Sound output and Storage open in Control Center: the TV's default, or any screen its settings apps offer (likely matches first, **Show every screen** for the rest). Useful where the TV keeps the useful page elsewhere |
+| **Talkies** | |
+| Keys and location | Your TMDB key (picks) and weather area. **Send from your phone** shows a QR code: scan it with a phone on the same Wi-Fi and paste them into the page it opens (it works once, for 5 minutes, only on your home network, and the keys stay on the TV). Or type or paste each one; keys are tried with the service first and only saved if it accepts them. **Remove** clears one |
 | Updates | The installed version, and whether a newer release is out (checked once a day while Talkies is in front). OK checks now and, on the APK from the releases, downloads the new one, checks it (GitHub's size and SHA-256, newer, signed with the project's key) and hands it to Android's installer, which asks first; the first time Android also asks to allow Talkies to install apps. A Talkies built on a computer is only told a new version is out |
-| About | Credits for the data and code Talkies uses |
+| Network debugging | "On · port 5555" while computers on your network can control the TV over ADB (how Talkies was installed). **Turn off** (needs the permission below) or open Developer options; turning it on again is done in Developer options |
+| About | Credits for the data and code Talkies uses. **What's new** lists what this version changed, in short notes, with Updates at the top; after an update Home shows the first few once, with **See all changes**. **Report a problem** shows a QR code that opens a GitHub bug report on your phone with the TV's model, Android and Talkies versions, memory, and the Accessibility and Remote keys settings filled in; nothing is sent from the TV |
 
 **One-time setup for Turn off now, the sleep timer and cricket search:** this TV has no "device admin" support, so the
 launcher turns the TV off through a small accessibility service. The same service types a match into JioHotstar's
@@ -125,9 +146,22 @@ service TMDB lists for your country (Viaplay, Canal+, RTL+, Joyn, Stan, Crave…
 **No streaming apps?** With none of them installed, the tabs show the same kind of titles anyway, and OK plays the
 title's trailer in YouTube. The line under the card says where it streams ("Trailer · on Netflix").
 
+### Languages
+
+Talkies settings → **Picks languages**. The list offers the languages your country's picks come in, most common
+first, and English (it fills in after the picks first load). OK on one shows only the languages you choose; OK again
+leaves it out; **All languages** goes back to everything. The picks refresh straight away.
+
+With languages chosen, Trending takes popular titles in them from anywhere (a Korean series streaming in France, not
+only French-made ones), two for each popular English title if English is one of them. New in … still means made in
+your country, in those languages, so it can be short. It's the title's original language: a film dubbed into Tamil
+still counts as Hindi, and TMDB doesn't tell Brazilian from European Portuguese.
+
 **Which country:** the TV's time zone (where it actually is; many TVs stay on "English (United States)" wherever
-they are), then its language setting. If that's wrong for you, set it: `./set-region.sh GB` (`--remove` to go back).
-It also picks the cricket and °C/°F behaviour below.
+they are), then its language setting. To use another country's picks, or if that's wrong for you: Talkies settings →
+**Country** (or `./set-region.sh GB` from a computer). It changes the picks, the *New in …* tab, Picks from (India
+only), which cricket teams and football leagues come first, and Soccer for Football in the US and Canada. The
+weather's °C or °F and which app has the cricket still follow where the TV is.
 Each tab keeps up to 24 and shows 12 of them, moving on by 4 each hour, so the large card and the row change through
 the day and the same set comes back only after 6 hours. The lists refresh at most every 6 hours (TMDB's popularity
 rankings change about daily, so refreshing more often would mostly fetch the same lists); a refresh takes a few seconds. Under the large card: film or series, genre, language (when not English) and the app.
@@ -136,7 +170,28 @@ stretched; only the large card's full-size picture is kept in memory.
 **OK** on a pick opens that app.
 TMDB doesn't know each title's ID inside Netflix, Hotstar and the rest, so the app opens to its home screen, not the title.
 
-The picks come from [TMDB](https://www.themoviedb.org), which needs a free key of your own:
+### In India without a key
+
+Until you add a TMDB key, a TV in India gets its picks from [StreamRadar India](https://streamradar.bricksgenius.com),
+a free, open list of what's on Indian apps (an idea from Swakshan):
+
+- **Trending**: the Top 10 films and series of each app on this TV (JioHotstar, Netflix, Prime Video, ZEE5, SonyLIV,
+  Apple TV), taken in turn.
+- **New in India**: what's just come out on those apps, newest first.
+- **OK** opens the title's own page in its app where StreamRadar has a link (JioHotstar, ZEE5 and SonyLIV checked),
+  else the app.
+- **None of those apps on this TV?** You still get the lists, all six apps' Top 10s and what's new, marked "Trailer · on
+  Netflix". OK searches YouTube for the title's trailer. Without YouTube either, the tabs stay hidden.
+
+StreamRadar's lists don't give genres or languages, so the line under the card is just film or series and the app,
+and **Picks languages** isn't offered. Add a TMDB key and TMDB's picks take over at once.
+
+**Picks from** (Talkies settings, India only) switches between the two at any time: **TMDB** (needs your key; picks
+in your languages, with genres) or **StreamRadar** (each app's own Top 10, and OK opens the title). The picks refetch
+straight away.
+
+The picks come from [TMDB](https://www.themoviedb.org), which needs a free key of your own (in India, StreamRadar
+fills in until you add one):
 
 1. Create an account at [themoviedb.org](https://www.themoviedb.org/signup) and open
    [Settings → API](https://www.themoviedb.org/settings/api). Request a developer key (personal use).
@@ -160,8 +215,11 @@ adb -s "$TALKIES_TV" logcat -d -s GlassTrending
 
 ## Continue
 
-The first tab shows at least ten recent titles: first the newest from each app you've watched (so one app can't take
-over the front of the row), then the next newest. YouTube gets at most two cards. Cards from Watch Next show how far in you are when the app shares it (Prime Video and Xstream Play do).
+The first tab shows up to sixteen recent titles: first the newest from each app you've used in the last two weeks (so
+one app can't take over the front of the row), then the next newest. YouTube gets up to four cards for the last two days,
+two otherwise; **OK** on one opens that video, or searches for it when Talkies hasn't matched it exactly (Sharp YouTube
+pictures finds the match). JioHotstar reports only "S1 E2 Allen" while it plays, so a title you opened from its Continue
+card keeps the show's name, picture and link; one you started inside the app is a plain card that opens the app. Cards from Watch Next show how far in you are when the app shares it (Prime Video and Xstream Play do).
 It combines two sources:
 
 - **Android TV's Watch Next list.** Netflix, Prime Video, JioHotstar, Apple TV and Xstream Play publish what you're
@@ -192,7 +250,9 @@ YouTube Music) are left out.
 
 **Permissions:** Watch Next needs the *TV listings* permission: Talkies asks for it the first time it starts (or Talkies settings → **Finish setup**), and `build-and-install.sh` grants it.
 For the "while playing" titles, Android only shares what's playing with an app that has *notification access*.
-On the TV: **Settings → Apps → Special app access → Notification access → Talkies → Allow.**
+On the TV: **Settings → Apps → Special app access → Notification access → Talkies → Allow.** Many Android 8 TVs
+have no such screen: there, with the `WRITE_SECURE_SETTINGS` grant, Finish setup switches it on itself; without it,
+`adb shell cmd notification allow_listener com.techpp.glass/com.techpp.glass.WatchService` from a computer does.
 Talkies reads no notifications; it uses the access only to see apps' media sessions (what's playing), and
 keeps the list on the TV (`/sdcard/Android/data/com.techpp.glass/files/recent/`). To stop it, switch the same toggle off;
 to clear the list:
@@ -222,7 +282,8 @@ Artwork is cached on the TV in `files/channels/`.
 ## Weather
 
 The weather shows at the top left, for example "27° SHOWERS", in °C, or °F where that's the custom (the US and a
-few others; see [Which country](#trending-and-new-in-)).
+few others, going by where the TV is), after a small line drawing of the sky: sun, moon, sun or
+moon behind a cloud, cloud, rain, snow, thunder or fog.
 The weather part combines two sources:
 
 - **Temperature** is measured at the **nearest airport weather station**. Airports publish observations (METAR) every
@@ -233,8 +294,17 @@ The weather part combines two sources:
 - **Rain and cloud** come from [Open-Meteo](https://open-meteo.com)'s model for your exact coordinates, because an
   airport 15–20 km away can be dry while it rains at home.
 
-Without a recent airport report, the temperature also comes from Open-Meteo. It refreshes at most every
-30 minutes, and only while the home screen is showing.
+When it's dry now but rain is likely (50% or more) in the next 12 hours, the line adds when: "27° SUNNY · RAIN AROUND
+4 PM". It goes once that hour comes.
+
+Without a recent airport report, the temperature also comes from Open-Meteo. If Open-Meteo doesn't answer,
+[MET Norway](https://api.met.no)'s forecast fills in for the conditions, the rain note and the forecast (with no
+chance of rain to go by, a rainy hour counts as likely). It refreshes at most every 30 minutes, and only while the
+home screen is showing.
+
+**With no location set,** Talkies goes by your internet address: it asks ipwho.is (or ipapi.co, or geojs.io) once a
+week, and Keys and location → **Weather location** says "Near Bengaluru". It can be off by a city, or further on a
+VPN. Setting a place replaces it for good; **Remove** there turns it off and leaves just the time and date.
 
 Set your area once, on the TV in Talkies settings → **Keys and location** (or **Send from your phone**), or from a
 computer:
@@ -256,7 +326,7 @@ While a match is live or on today, the line under the weather shows the most rel
 status ("LIVE · Test · Day 4: 3rd Session…"); the caption under it names the series.
 
 At stumps, lunch, tea or a rain delay nobody is playing, so a match isn't shown as live: the line reads
-"Test · AUS v RSA 329 · Day 1: Stumps", it's still checked every 15 minutes for play to resume, and a football match
+"Test · AUS v RSA 329 · Day 1: Stumps", it's still checked every minute for play to resume, and a football match
 being played comes first (the Football row then sits above Cricket).
 
 - **Match type:** Test, ODI or T20I for internationals; First-class, One-day or T20 for domestic matches.
@@ -277,23 +347,14 @@ being played comes first (the Football row then sits above Cricket).
   ignore the text, so the Talkies accessibility service types it (see [Talkies settings](#talkies-settings)); with the service off,
   the search page opens empty. JioHotstar's results list highlights and replays too, and a series it doesn't stream
   shows only older clips.
-- **Data:** [CricketData.org](https://cricketdata.org)'s `cricScore` (all current matches in one request). The free
-  key allows 100 requests a day, so it refreshes every 15 minutes while a match is live and hourly otherwise, only
-  while Talkies is in front with the TV's display on, and stops for the day at 92. The quick list only has each team's latest innings,
-  so a live Test's full innings come from one extra request (`match_info`): every 15 minutes for the Test shown first,
-  every 45 for up to two more (45 for all once 70 requests are used). The feed sometimes credits an innings to the
-  wrong team (a follow-on came through as the other side's); the launcher checks the latest innings against the
-  status ("Australia trail by 242 runs") and moves it to the side the numbers fit. Scores can lag the TV broadcast by a few minutes.
+- **Data:** ESPN's public score panel (`site.web.api.espn.com/…/cricket/scorepanel`, no key; like football's, not a
+  documented API), one request for each day (ESPN's days are UTC) that your day touches. It refreshes every minute
+  while a match is on and every 30 minutes otherwise, only while Talkies is in front with the TV's display on.
+  Internationals are told apart by ESPN's match class (Test, ODI, T20I and the women's), so A sides and under-19s
+  stay out. ESPN updates ball by ball; scores can still lag the TV broadcast by a minute. Thanks @Swakshan for pointing at it.
 
-Set your key once (a free account at cricketdata.org gives one), the same way as the TMDB key: on the TV in Talkies
-settings → **Keys and location**, or from a computer:
-
-```bash
-./set-cricket-key.sh
-```
-
-`./set-cricket-key.sh --remove` turns cricket off. Both scripts press Home on the TV when done. The log shows what it
-found and where each Watch button points: `adb -s "$TALKIES_TV" logcat -d -s GlassCricket`.
+To hide cricket, Talkies settings → **Sports** → Cricket. The log shows what it found and where each Watch button points:
+`adb -s "$TALKIES_TV" logcat -d -s GlassCricket`.
 
 ## Football
 
@@ -304,16 +365,58 @@ the score and the minute ("LIVE · Premier League · 67'"), kick-off time ("star
 - **Which matches:** live now, starting within a day, or finished in the last 12 hours, from your leagues.
 - **Your leagues:** Talkies settings → **Football leagues**. Each country starts with its own (India: Premier League,
   Champions League and Indian Super League; the UK: Premier League, Champions League and the Scottish Premiership;
-  the US: MLS, Premier League and Champions League…), plus the World Cup and the Euros when they're on. Press OK to
+  the US: MLS, Premier League and Champions League; Turkey: Süper Lig, Champions League and Premier League…), plus the World Cup and the Euros when they're on. Press OK to
   turn one on or off; **Back to the defaults** undoes your changes.
+- **Soccer:** in the US and Canada, where football means the NFL, Talkies says Soccer instead (Sports, **Soccer
+  leagues**, the row's name).
+- **NBA and NFL:** Talkies settings → **Sports**, anywhere (on to start in the US and Canada). Their games read the
+  American way, away team first
+  ("CHI at SEA", "8:28 - 4th"). The row is called **Football**, **NBA** or **NFL** when that's all it has, and
+  **Sports** when it's a mix.
 - **Updates:** every 15 minutes, and every minute for a league with a match on, only while Talkies is in front.
 - **Data:** ESPN's public scoreboard. It's free and needs no key, but it isn't an official API: ESPN can change it
   without notice, and then the Football row just stays away until Talkies is updated.
 - **Watching:** not yet. Which app shows which league differs by country, so OK on a match card says so for now.
 
+## Screensaver and what's playing
+
+**Talkies' screensaver:** a dim clock (with the seconds, smaller), the date and the weather, moving to a new spot every 20 seconds so nothing
+burns in (handy on OLED TVs). Pick it in the TV's Settings → Device Preferences → Screen saver → **Talkies**; it isn't
+the TV's screensaver until you do. Behind the clock, by Talkies settings → **Screensaver**:
+
+- **Clock** (default): black.
+- **Wallpaper**: your wallpaper (your picture or Bing's), dimmed, drifting and growing slowly so it never holds still.
+- **Picks**: the Trending picks' pictures, a new one each minute, with the title and app under the clock. It keeps two
+  pictures in memory, so on a TV with under 1.6 GB the row says *may be slow*: Clock or Wallpaper is lighter.
+- **Board**: instead of the clock, a split-flap board of 22 letters by 6 rows, like an old station departures board:
+  the time to the second, the date, the weather, then rain coming or the day's high and low. Only the letters that
+  change flip, each running through a few on the way, and every 15 seconds a wave from the top left turns every letter
+  once round. It shifts a little every 20 seconds, on true black. An idea from
+  [Departures](https://github.com/0xdravyn/departures).
+
+**Screensaver message:** Talkies settings → **Screensaver message** shows a QR code; on your phone, type up to two
+lines of 22 letters ("Dinner at 8", "Happy birthday Asha!"), emoji included. Board shows them in amber at the bottom, each emoji
+on its own tile; the other screensavers show them under the clock (Picks uses that line for the title). Send both lines empty to remove it.
+
+**Quiet hours:** from 11 PM to 7 AM the screensaver dims to about a third. Talkies settings → **Quiet hours** picks
+other hours or Off.
+
+It comes on after the TV's idle time, over any app, and any button wakes the TV. Talkies settings → **TV's screensaver**
+makes Talkies the TV's screensaver if you've given Talkies the `WRITE_SECURE_SETTINGS` grant, and OK again puts back the
+one it replaced. Without the grant, choose it in the TV's settings. If they don't list it (Sony's Ambient mode, for one),
+from a computer: `adb shell settings put secure screensaver_components com.techpp.glass/.Screensaver`.
+
+**What's playing:** while music (or anything else) plays in the background, the line under the icons shows it
+instead of the score: "♪ Song · Artist · Spotify". The scores stay in their rows, and the line goes back to them
+when the music stops. The remote's Play/Pause works as anywhere; Control Center → Now playing has the buttons.
+
 ## Hold OK: app and Continue menus
 
 **Hold OK** (about half a second) on:
+
+- **A match** in a score row: **Pin over TV** keeps a small live score card in a corner while you watch anything, and hides on
+  Talkies' Home and the screensaver. It can't take remote buttons from the app underneath, and it leaves about five minutes after the match ends. **Corner**
+  moves it; **Unpin from TV**, or Control Center → **Unpin score**, takes it away. It needs Talkies' Accessibility switch.
 
 - **An app** in the dock or All apps:
   - **Add to dock** (from All apps): it takes the dock's last spot, and the app that was there moves to the front of
@@ -326,14 +429,16 @@ the score and the minute ("LIVE · Premier League · 67'"), kick-off time ("star
     Talkies settings → **Hidden apps** lists them; OK shows one again, at the end of All apps.
   - **Uninstall** opens Android's own "Uninstall this app?" dialog, and only shows for apps you installed (not system
     apps or Talkies). **App info** opens the app's page in Settings.
-- **A Continue card** (the Continue tab or the Watch Next row): **Remove from Continue**, or **Open** the app itself
+- **An input tile** (Talkies settings → Inputs on Home): Add to dock or Remove from dock, Move, Change image, and
+  **Remove from Home**.
+- **A Continue card** (the Continue tab or the Watch Next row): **Refresh Continue** (reads what the apps have reported again; Continue also does this each time you return to Home), **Remove from Continue**, or **Open** the app itself
   rather than the episode. A removed title stays out until the app reports a new episode of it.
 
 **Back** closes a menu without doing anything.
 
 ## Rearrange apps
 
-1. **Hold OK** on any app in the dock or All apps and choose **Move**. It lifts out, with a thicker ring,
+1. **Hold OK** on any app in the dock or All apps and choose **Move**. It lifts out, with a ring around it,
    and a hint appears at the top.
 2. **Use the arrows** to move it. Within a row it trades places with its neighbour; in the grid, Up and Down move it a
    row and the other apps shift along. Moving between the dock and All apps swaps it with the app there, so the dock
@@ -360,6 +465,9 @@ the text to keep it readable.
   for 5 minutes.
 - **From this TV:** the newest pictures on the TV and any USB drive plugged into it (Pictures, Downloads, DCIM…),
   each with a small preview; OK on one uses it. Android asks once to let Talkies see your photos.
+- **A folder, a picture a day:** the folders come first in that list, each with its newest picture. OK on one uses
+  its first picture now and the next one each day, in name order, starting over after the last. Choosing a single
+  picture, or **Remove your picture**, stops it. If the folder is gone (a USB drive unplugged), the last picture stays.
 - **Picture of the day:** Bing's, checked every few hours. Your own picture wins while there is one.
 - **Remove your picture:** back to the glow (or to Bing's picture, when that's on).
 

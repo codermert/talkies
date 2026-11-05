@@ -18,42 +18,51 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rajupp/talkies/releases/latest"><b>Latest release</b></a> (about 200 KB) · free and open source (MIT) · made by Raju · <a href="https://techpp.com">TechPP</a>
+  <a href="https://github.com/rajupp/talkies/releases/latest"><b>Latest release</b></a> (about 220 KB) · free and open source (MIT) · made by Raju · <a href="https://techpp.com">TechPP</a>
 </p>
 
 ## What you get
 
 - **No ads, no sponsored rows, no tracking.** Talkies shows your apps and what you choose, nothing else.
-- **Your apps** in a dock of 5 to 10 (seven to start), the rest a click away with the **All apps** button at its end. Hold OK on
+- **Your apps** in a dock of 4 to 10 (seven to start), the rest a click away with the **All apps** button at its end. Hold OK on
   any app to move, hide or uninstall it.
 - **For You:** what's trending on *your* streaming apps in *your* country, what's new there, and Continue watching.
   Only titles that stream on a subscription you can use; hide it for a big clean clock instead.
-- **Live cricket and football** on the home screen, with your country's teams and leagues first.
+- **Live cricket, football, NBA and NFL** on the home screen, with your country's teams and leagues first.
 - **Weather** at a glance, with the next hours and days in Control Center.
-- **Control Center:** what's playing (pause, skip), sleep timer, turn off, free up memory, speed test, Bluetooth,
+- **Control Center:** what's playing (pause, skip), sleep timer, turn off, recent apps, speed test, Bluetooth,
   sound output and more, one button away.
-- **Inputs** that know your devices: "PlayStation 5 · On", "Fire TV · Standby".
+- **Inputs** that know your devices: "PlayStation 5 · On", "Fire TV · Standby". Name or hide any of them, put one on
+  Home as a tile, or have the TV open one (or an app) each time it turns on. Turn a console on while Home is up and
+  Talkies offers to switch to it.
+- **What's playing** under the icons while music plays, and a **screensaver** of its own: a dim clock that moves so
+  nothing burns in, or a split-flap board, with a message from your phone and dimmer at night.
 - **Remote buttons with a new job:** make any spare button open an app, and give it a second job when held.
 - **Your apps' channel rows** below the dock (Netflix, YouTube, JioHotstar…), the ones you pick, in your order.
 - **Light by day, dark at night**, following your sunrise and sunset. **Your own wallpaper**, sent from your phone or
   picked from the TV or a USB drive, or Bing's picture of the day.
 - **Updates itself:** a bell tells you when a new version is out, and OK installs it.
 
+<p align="center">
+  <img src="docs/tour.gif" width="720" alt="Moving through Talkies: the dock's apps light up the background in their colour, the picks slide along, then the live Cricket and Sports rows below the dock">
+</p>
+
 **Set for where you live, and yours to change.** Talkies works out your country from the TV's time zone (many TVs
-stay on "English (United States)" wherever they are), and almost everything on the screen can be changed:
+stay on "English (United States)" wherever they are), or any country you pick in Talkies settings → Country, and
+almost everything on the screen can be changed:
 
 | | Set for your country | You can change |
 |---|---|---|
 | **Weather** | °C or °F; day and night follow your sunrise and sunset | The area (a town or `lat,lon`), in Talkies settings → Keys and location |
 | **For You** | Trending and *New in your country* only show titles that stream on a subscription where you are, on your apps (no streaming apps: their trailers in YouTube) | Show or hide it |
-| **Dock** | — | Which apps (Talkies settings → **Dock apps**, or hold OK on any app), how many (**Dock size**, 5 to 10) and their order (hold OK → **Move**); All apps in your order, recently opened first, or A to Z (**All apps order**); your own picture on any app (hold OK → **Change image**) |
+| **Dock** | — | Which apps (Talkies settings → **Dock apps**, or hold OK on any app), how many (**Dock size**, 4 to 10) and their order (hold OK → **Move**); All apps in your order, recently opened first, or A to Z (**All apps order**); your own picture on any app (hold OK → **Change image**) |
 | **Cricket** | Your team's matches first, then other internationals and your domestic competitions (IPL, Ranji Trophy… in India) | On or off |
-| **Football** | Your country's leagues by default (Premier League, Champions League and ISL in India; MLS first in the US…) | Pick any leagues |
-| **Channels, keys, look** | — | Which channel rows and their order, what each remote button does (tap and hold), Light, Dark or Auto, wallpaper |
+| **Football** | Your country's leagues by default (Premier League, Champions League and ISL in India; the NFL, NBA and MLS in the US; Süper Lig in Turkey…) | Pick any leagues; turn on the NBA and NFL anywhere |
+| **Channels, keys, look** | — | Which channel rows and their order, what each remote button does (tap and hold), Light, Dark or Auto, wallpaper, Full or Lite effects |
 
 | | |
 |---|---|
-| ![The Inputs menu over the Bing wallpaper: HDMI 1 shows "Fire TV · On" with an orange dot, HDMI 2 and 3, Live TV and More inputs](docs/inputs.jpg) | ![Control Center: Talkies settings, weather, sleep timer, turn off now, free up memory, storage, animations, network and speed test](docs/control-center.jpg) |
+| ![The Inputs menu over the Bing wallpaper: HDMI 1 shows "Fire TV · On" with an orange dot, HDMI 2 and 3, Live TV and More inputs](docs/inputs.jpg) | ![Control Center: Talkies settings, weather, sleep timer, turn off now, storage, animations, network and speed test](docs/control-center.jpg) |
 | *Inputs: each HDMI device by name, with its brand's colour* | *Control Center* |
 | ![Control Center → Weather: the next six hours, 20° Clear at 10 pm down to 18° Mostly clear at 3 am](docs/weather-hours.jpg) | ![Control Center → Weather, OK again: the next six days with highs, lows and conditions](docs/weather-days.jpg) |
 | *Weather: the next six hours…* | *…and OK again for the next six days* |
@@ -70,8 +79,8 @@ too, use [CleanYourTV](https://github.com/Gathin23/cleanyourtv) first; Talkies w
 ## Install
 
 **You need** an Android TV or Google TV with **Android 8.0 or newer**. Talkies is built and tested on a OnePlus TV
-(Google TV, Android 11); other TVs should work but haven't been tried. Samsung, LG, Roku and other TVs that don't run
-Android can't use it.
+(Google TV, Android 11); see [TVs and boxes](#tvs-and-boxes) for others people use it on. Samsung, LG, Roku and other
+TVs that don't run Android can't use it.
 
 Pick the way that suits you:
 
@@ -110,6 +119,12 @@ onto it and open it with a file manager on the TV.
    button service back on by itself, change the animation speed, and turn network debugging off.
 3. Go on to [First-time setup](#first-time-setup).
 
+**On a slow TV**, one more command makes Talkies smoother from its first launch, by compiling it ahead of time instead
+of while you use it (an idea from Aerial). It takes a few seconds; run it again after an update if you like:
+```bash
+adb -s 192.168.1.20:5555 shell cmd package compile -m speed -f com.techpp.glass
+```
+
 Only *Wireless debugging* on your TV, or `adb connect` refused? See [Connect to the TV](docs/building.md#connect-to-the-tv).
 
 ### Ask an AI assistant
@@ -133,7 +148,7 @@ opens its switch.
 | **1. Home button** | Settings → Device Preferences → **Accessibility → Talkies** → on | Keeps the Home button on Talkies instead of the TV's own launcher. Also powers Turn off, the sleep timer and remote buttons |
 | **2. Notification access** | Settings → Apps → Special app access → **Notification access → Talkies** → on | Continue watching, Now playing and the update bell. Talkies reads no notifications except the Play Store's update ones |
 | **3. Two permissions** | Talkies asks the first time it opens: allow both | Your Wi-Fi name (Android shares it only with location) and Android TV's Watch Next list |
-| **4. Keys and weather** (optional) | Talkies settings → **Keys and location → Send from your phone** | Scan the QR code with your phone and paste a free [TMDB](https://www.themoviedb.org/settings/api) key (picks), a free [CricketData](https://cricketdata.org) key (cricket) and your town (weather) |
+| **4. Keys and weather** (optional) | Talkies settings → **Keys and location → Send from your phone** | Scan the QR code with your phone and paste a free [TMDB](https://www.themoviedb.org/settings/api) key (picks) and your town (weather) |
 
 > [!TIP]
 > **Android 13 and newer** (Google TV Streamer, newer TVs) grey out the Accessibility and Notification access
@@ -144,11 +159,27 @@ opens its switch.
 
 > [!NOTE]
 > Android shows the same strong warning for every accessibility service. Talkies' service filters only the Home
-> button and the buttons you give a job, and notices only when the TV's own launcher, the Assistant or JioHotstar
+> button, the buttons you give a job and OK while the sleep timer's warning is up, and notices only when the TV's own launcher, the Assistant or JioHotstar
 > comes up; it reads nothing on screen except JioHotstar's search box, when you open a cricket match there.
 
-Football scores need no key. Without a TMDB key, Trending and *New in your country* stay away (Continue still
-works); without a CricketData key, so does cricket.
+Cricket and football scores need no key. Without a TMDB key, Trending and *New in your country* stay away (Continue
+still works), except in India, where they come from [StreamRadar](https://streamradar.bricksgenius.com) until you add
+one.
+
+### TVs and boxes
+
+What people have told us, besides the OnePlus TV it's made on. Yours isn't here, or something's off? Talkies settings
+→ About → **Report a problem** opens a bug report on your phone with your TV's details filled in.
+
+| TV or box | How it does |
+|---|---|
+| OnePlus TV (Google TV, Android 11) | Everything; it's built and tested on one. |
+| Google TV Streamer (Android 14) | Works. The Accessibility switch needs [one `adb` command](#first-time-setup); Inputs shows only Live TV and there's no Screensaver button, since the Streamer allows neither. |
+| NVIDIA SHIELD (Android 11) | Installs from the release APK ([#2](https://github.com/rajupp/talkies/issues/2)); a SHIELD TV Pro runs it as its main home screen. |
+| Xiaomi Mi Box S | Holding Home opens Google TV's dashboard since 1.2.5. |
+| Sony (Google TV) | Sound output opens Display & sound, where Audio output picks the speakers. |
+| Sony XF9005 (2018, Android TV) | Responsive, with CleanYourTV alongside. |
+| TCL with 1 GB of memory | Can feel slow; Effects switches to Lite on its own on TVs like these (Talkies settings → Effects). |
 
 ## Updates
 
@@ -160,6 +191,8 @@ at any time. Your settings stay as they are.
   Talkies, so open the bell or Updates again and press OK once more.
 - **Keeps sending you back to that switch although it's on?** Some TVs leave an old "deny" behind; from a computer,
   `adb shell appops set com.techpp.glass REQUEST_INSTALL_PACKAGES allow` clears it.
+- **"This TV can't show Android's install screen"**: some boxes have none. From a computer,
+  `adb install -r talkies.apk` installs the same APK and keeps your settings ([With a computer](#with-a-computer)).
 - Only APKs from this project's releases, signed with its key, are installed. Talkies checks the download's size and
   checksum against GitHub's, its version and its signature first.
 
@@ -171,10 +204,12 @@ settings to another TV.
 ## Privacy
 
 - **No account, no ads, no analytics.** Nothing about what you watch leaves the TV (except the opt-in YouTube
-  lookup below), and your weather area goes only to the weather services.
-- **What it connects to, and only while it's on screen:** TMDB for the picks (with your key), Open-Meteo and
-  NOAA's aviationweather.gov for the weather, CricketData for cricket (with your key), ESPN's public scoreboard for
-  football, Bing for the wallpaper (if you turn it on), GitHub once a day for updates, and Cloudflare when you run a
+  lookup below), and your weather area goes only to the weather services. Until you set a weather location, a location
+  service (below) sees your internet address once a week to find your rough city; Remove in Keys and location stops it.
+- **What it connects to, and only while it's on screen:** TMDB for the picks (with your key), Open-Meteo,
+  MET Norway (if Open-Meteo is down) and NOAA's aviationweather.gov for the weather, ipwho.is, ipapi.co or geojs.io for
+  your rough city (only with no location set), ESPN's public scoreboard for cricket and
+  football, StreamRadar for the picks in India without a TMDB key, Bing for the wallpaper (if you turn it on), GitHub once a day for updates, and Cloudflare when you run a
   speed test. Sharp YouTube pictures (off by default) looks a video's title up on YouTube.
 - **Your keys, location and wallpaper** stay on the TV. *Send from your phone* (keys, and Wallpaper → From your
   phone) runs a one-time page on your home network for 5 minutes, and what you send goes straight to the TV. A photo
@@ -192,17 +227,19 @@ Control Center and remote-button remapping. They work together: run CleanYourTV 
 |---|---|
 | **Home opens Google TV** (or the TV's own launcher) | The Talkies Accessibility switch is off ([First-time setup](#first-time-setup), step 1). A force stop turns it off; with the optional `pm grant` from the install, Talkies turns it back on by itself. |
 | **Accessibility switch greyed out**, or "Restricted setting" | Android 13 and newer: see the tip under [First-time setup](#first-time-setup). On a Google TV Streamer it needs the one `adb` command there. |
-| **No Trending or New tabs**, only Continue | No TMDB key yet: Talkies settings → **Keys and location** → *Send from your phone*. With a key, picks arrive within a minute of opening Talkies with the TV online. No streaming app Talkies recognises and no YouTube: the row says so. |
+| **No Trending or New tabs**, only Continue | No TMDB key yet (outside India): Talkies settings → **Keys and location** → *Send from your phone*. With a key, picks arrive within a minute of opening Talkies with the TV online. No streaming app Talkies recognises and no YouTube: the row says so. |
 | **No weather** | Talkies needs your town for it: Talkies settings → **Keys and location**. |
 | **Continue stays empty** | Notification access or the Watch Next permission is missing: Talkies settings → **Finish setup**. |
+| **No Notification access screen** (many Android 8 TVs) | The TV's settings don't have one, so Finish setup leaves it out: it's optional, for Continue, Now playing and the bell. From a computer: `adb shell cmd notification allow_listener com.techpp.glass/com.techpp.glass.WatchService`. With the `WRITE_SECURE_SETTINGS` grant from the install steps, Finish setup switches it on itself. |
 | **Google Play Protect blocks the install** | Choose *More details* → *Install anyway*. Talkies isn't on the Play Store, so Protect doesn't know it. |
+| **"App blocked to protect your device"** (only a *Got it* button) | Play Protect blocks apps from outside the Play Store that ask for Accessibility or notification access, which Talkies uses for Home, Turn off and Continue; it's about those permissions, not Talkies' code, and there's no *Install anyway*. Turn off Play Protect's scanning (Play Store → your profile → Play Protect → ⚙ → *Scan apps with Play Protect*), install, then turn it back on; Talkies keeps working. Or install from a computer: `adb install talkies.apk` isn't blocked. |
 | **"App not installed."** | Usually a Talkies you built yourself is already on the TV, signed with another key: see *Coming from a version you built yourself* under [Updates](#updates). On a first install, it can also be Play Protect refusing it without saying so: some TVs block apps from outside the Play Store that ask for Accessibility or notification access, which Talkies uses for Home, Turn off and Continue. Turn Play Protect off (Play Store → your profile → Play Protect), install, then turn it back on; Talkies keeps working. Otherwise, free some storage and try again. |
 | **Inputs shows only Live TV** | Your device has no HDMI inputs of its own (a streamer like the Google TV Streamer or Shield). On a TV, its HDMI ports are listed. |
 | **No Screensaver** in Control Center | Your device gives apps no way to start the screensaver, so Talkies leaves the button out. It still starts by itself after the idle time set in the TV's settings. |
 | **"Google Assistant is having a problem"** | The Google TV launcher was disabled. From a computer: `adb shell pm enable com.google.android.apps.tv.launcherx` |
 | **Home opens a setup screen** | The Talkies Accessibility switch is off, so Google TV's setup wizard answered Home: turn it on ([First-time setup](#first-time-setup), step 1). |
 | **Home doesn't switch the TV to your box** (Google TV Streamer, Shield…) | Update to 1.1.3: Talkies now lets Home through on a box, so Android can switch the input. You may see Google TV's home flash before Talkies; to avoid it, make Talkies the default Home app once, from a computer: `adb shell cmd package set-home-activity --user 0 com.techpp.glass/.HomeActivity` |
-| **Holding Volume changes it only one step** | Some TVs stop repeating a held button while an app watches the remote, which Talkies does for Remote keys. Talkies settings → **Remote keys** → Off (it's off until you give a button a job). |
+| **Holding Volume changes it only one step** | Some TVs stop repeating a held button while an app watches the remote, which Talkies does for Remote keys. Talkies settings → **Remote keys** → Off. Then holding Volume works, and Home shows Google TV's home for a moment before Talkies. |
 | **Screensaver shows Google's art, not your photos** | Installing with Talkies' build script turned off Google TV's setup wizard, which Ambient mode needs for your Google Photos. From a computer, once: `adb shell pm enable com.google.android.tungsten.setupwraith`. Home stays on Talkies. |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | The installed Talkies was built on another computer: see *Coming from a version you built yourself* under [Updates](#updates). |
 | `adb connect` says **No route to host** on a Mac | macOS's Local Network privacy is blocking your terminal: System Settings → Privacy & Security → Local Network → allow it. |
@@ -236,9 +273,11 @@ Data (also listed in the app, Talkies settings → About):
   certified, or otherwise approved by TMDB.* You use your own free API key, under TMDB's [terms of use](https://www.themoviedb.org/api-terms-of-use).
 - **Weather:** [Weather data by Open-Meteo.com](https://open-meteo.com/), under
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); airport temperatures from NOAA's
-  [aviationweather.gov](https://aviationweather.gov).
-- **Cricket:** [CricketData.org](https://cricketdata.org), with your own key.
-- **Football:** ESPN's public scoreboard (not an official API; Talkies isn't affiliated with ESPN).
+  [aviationweather.gov](https://aviationweather.gov); the backup forecast from
+  [MET Norway](https://api.met.no), under CC BY 4.0.
+- **Picks in India without a key:** [StreamRadar India](https://streamradar.bricksgenius.com), a free Stremio add-on;
+  pointed out by Swakshan.
+- **Cricket and football:** ESPN's public scoreboard (not an official API; Talkies isn't affiliated with ESPN).
 - **Speed test:** Cloudflare's public speed-test endpoint.
 
 Code (details and license texts in `THIRD_PARTY_NOTICES.md`, all MIT):
@@ -250,19 +289,28 @@ Code (details and license texts in `THIRD_PARTY_NOTICES.md`, all MIT):
 - The speed test, HDMI-CEC names and the update bell's approach: [Matinee](https://github.com/Jarvis322/matinee).
 - Recognising consoles and players by what they announce over HDMI-CEC: [Luma](https://github.com/0xProbabillity/luma-tv).
 - Tiles for apps without a TV banner: [GlassLauncher](https://github.com/tlfares/GlassLauncher).
+- The list of TV makers' extras to hide: [Home Deck](https://github.com/glidiandev/home-deck).
 
 Ideas (no code; Talkies' own implementation):
 
 - The hold-OK menu (Move, Uninstall, App info), removing a card from Continue, giving remote buttons a new job, and
-  the Finish setup checklist: [Plume](https://github.com/aradhyas8/Plume_Launcher). Remote keys also follow CleanYourTV's.
+  the Finish setup checklist, the What's new card after an update and focus without a ring:
+  [Plume](https://github.com/aradhyas8/Plume_Launcher). Remote keys also follow CleanYourTV's.
 - Bing wallpaper, channel cards in last-watched order and apps opening from their tile: Plume. Spotting a stopped
   accessibility service: [Matinee](https://github.com/Jarvis322/matinee).
 - Starting the screensaver the way Google Assistant does, Recent apps and Control Center shortcuts:
   [tvOS Launcher](https://github.com/techgenius1/tvOS-Launcher) (ideas; no code copied).
-- Bluetooth connect, Restart…, Talkies at power-on, Empty inputs and the settings fallback for TVs that hide the
+- Bluetooth connect, Restart…, Talkies at power-on (every time), Empty inputs and the settings fallback for TVs that hide the
   standard settings screen: [CleanYourTV](https://github.com/Gathin23/cleanyourtv)'s launcher and add-ons.
 - Now playing and the weather forecast: [Luma](https://github.com/0xProbabillity/luma-tv).
 - Animation speed and Storage in Control Center: [GlassLauncher](https://github.com/tlfares/GlassLauncher).
+- Inputs on Home, an app or input at power-on, Lite effects on low-memory TVs, Report a problem with the TV's details,
+  ahead-of-time compiling and a list of TVs: [Aerial](https://github.com/pengchujin/aerial-tv).
+- Offering to switch to a device that turns on, naming and hiding inputs, the screensaver clock, what's playing on
+  Home and noticing a slow TV: [Home Deck](https://github.com/glidiandev/home-deck).
+- The split-flap Board screensaver, the screensaver message, quiet hours and "Rain around 4 PM":
+  [Departures](https://github.com/0xdravyn/departures).
+- A backup weather source, and a rough location from the internet address: tvOS Launcher, Aerial and Plume.
 
 The Outfit typeface is © The Outfit Project Authors, licensed under the SIL Open Font License 1.1 (`OUTFIT-OFL.txt`).
 

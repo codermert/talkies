@@ -16,8 +16,6 @@
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
     <!-- Trending picks: TMDB lists and backdrops. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Control Center: "Free up memory". -->
-    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
     <!-- Hold OK on an app → Uninstall: opens Android's own "Uninstall this app?" dialog. -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <!-- Talkies settings → Updates: hands a newer release to Android's installer, which asks first. -->
@@ -119,6 +117,17 @@
 
         <!-- Recently watched: holds notification access so Android shares which media sessions play and their
              titles (JioHotstar and YouTube only). It reads no notifications. -->
+        <!-- Talkies as the TV's screensaver: a dim clock that moves (Screensaver). -->
+        <service
+            android:name=".Screensaver"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
         <service
             android:name=".WatchService"
             android:exported="true"

@@ -8,21 +8,18 @@ import android.util.AttributeSet;
 import android.view.View;
 
 /**
- * Full-screen overlay that draws the one focus ring: a white outline around the focused card or tile, moved
- * (with a small spring) by the activity, with a soft halo around it so it reads from across the room. In the day
- * theme a faint dark edge keeps it visible on light backgrounds; while an app is picked up for moving the ring is
- * thicker. The halo is six thin strokes fading outwards: no blur, so it costs nothing per frame.
+ * Full-screen overlay that draws a ring around the app picked up for moving (hold OK → Move), placed by the activity.
+ * Focus itself has no ring by default: the focused card grows and lifts on a shadow, like Plume's. Talkies settings →
+ * Focus → Ring keeps the ring on it always, for busy wallpapers where a shadow doesn't show. There, and in the day
+ * theme, a faint dark edge keeps the ring visible on light backgrounds.
  */
 public class HighlightView extends View {
     final RectF rect = new RectF();
     private float radius;
-    private boolean day, moving;
-    private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG), edge = new Paint(Paint.ANTI_ALIAS_FLAG),
-            halo = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private boolean day, moving, always;
+    private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG), edge = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final float dp;
     private final RectF tmp = new RectF();
-    private static final float HALO_DP = 12f;
-    private static final int HALO_BANDS = 6;
 
     public HighlightView(Context c, AttributeSet a) {
         super(c, a);
@@ -30,9 +27,8 @@ public class HighlightView extends View {
         ring.setStyle(Paint.Style.STROKE);
         ring.setColor(0xFFFFFFFF);
         edge.setStyle(Paint.Style.STROKE);
-        edge.setColor(0x33000000);
+        edge.setColor(0x55000000);
         edge.setStrokeWidth(dp);
-        halo.setStyle(Paint.Style.STROKE);
         setFocusable(false);
         setWillNotDraw(false);
     }
@@ -40,34 +36,24 @@ public class HighlightView extends View {
     void setRing(RectF r, float radiusPx) {
         rect.set(r);
         radius = radiusPx;
-        invalidate();
+        if (moving || always) invalidate();
     }
 
     void setDay(boolean d) { day = d; invalidate(); }
 
     void setMoving(boolean m) { moving = m; invalidate(); }
 
+    void setAlways(boolean a) { always = a; invalidate(); }
+
     @Override
     protected void onDraw(Canvas canvas) {
-        if (rect.isEmpty()) return;
-        float w = (moving ? 5f : 4f) * dp;
-        // The halo: thin bands side by side just outside the ring, each fainter than the last, so it fades out
-        // smoothly over 12 dp (overlapping wide strokes showed as steps).
-        int haloRgb = day ? 0x000000 : 0xFFFFFF, strongest = day ? 0x22 : 0x34;
-        float band = HALO_DP / HALO_BANDS * dp;
-        halo.setStrokeWidth(band);
-        for (int i = 0; i < HALO_BANDS; i++) {
-            halo.setColor((Math.round(strongest * (1 - i / (float) HALO_BANDS)) << 24) | haloRgb);
-            float out = w + band * i + band / 2;
-            tmp.set(rect);
-            tmp.inset(-out, -out);
-            canvas.drawRoundRect(tmp, radius + out, radius + out, halo);
-        }
+        if ((!moving && !always) || rect.isEmpty()) return;
+        float w = 3 * dp;
         ring.setStrokeWidth(w);
         tmp.set(rect);
         tmp.inset(-w / 2, -w / 2);
         canvas.drawRoundRect(tmp, radius + w / 2, radius + w / 2, ring);
-        if (day) {
+        if (day || always) {
             tmp.inset(-w / 2 - dp / 2, -w / 2 - dp / 2);
             canvas.drawRoundRect(tmp, radius + w + dp / 2, radius + w + dp / 2, edge);
         }

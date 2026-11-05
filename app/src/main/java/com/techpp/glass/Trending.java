@@ -43,6 +43,7 @@ import java.util.concurrent.Executors;
  *
  * The TMDB key lives in a file on the TV (files/tmdb_key.txt), never in the APK. Picks and their backdrops are
  * cached in files/trending/. The list is refreshed at most every 6 hours, and only when the home screen asks.
+ * In India without a key, the picks come from StreamRadar instead (fetchRadar); with none of its apps here, they're trailers too.
  */
 final class Trending {
     private static final String TAG = "GlassTrending";
@@ -54,9 +55,9 @@ final class Trending {
     private static final long REFRESH_MS = 6 * 3600_000L, RETRY_MS = 30 * 60_000L;
     private static final int MAX_PICKS = 24, MAX_CHECKS = 72;
     static final int SHOWN = 4;
-    static final String TRENDING = "trending", INDIA = "india";
+    static final String TRENDING = "trending", INDIA = "india", RADAR = "streamradar";
     /** Bump when picks.json changes shape; the next home screen refreshes right away. */
-    private static final int CACHE_VERSION = 9;
+    private static final int CACHE_VERSION = 10;
     /** YouTube on Android TV, Fire TV, then the phone app, for the trailers when no streaming app is installed. */
     private static final String[] YOUTUBE = {"com.google.android.youtube.tv", "com.amazon.firetv.youtube", "com.google.android.youtube"};
     /** For one refresh: no streaming app matched, so picks are trailers in this YouTube app. */
@@ -122,7 +123,77 @@ final class Trending {
         prefs = c.getSharedPreferences("trending", Context.MODE_PRIVATE);
     }
 
+    // ---------------------------------------------------------------- languages (Talkies settings → Picks languages)
+
+    /** The original languages picks may be in, as TMDB's codes (ta, en, fr…); empty for all of them. */
+    Set<String> languages() {
+        Set<String> out = new java.util.LinkedHashSet<>();
+        for (String c : prefs.getString("languages", "").split(",")) if (!c.isEmpty()) out.add(c);
+        return out;
+    }
+
+    /** Saves the choice; the picks refetch at the next refresh check, not after six hours. */
+    void setLanguages(Set<String> codes) {
+        prefs.edit().putString("languages", String.join(",", codes)).apply();
+    }
+
+    /**
+     * The languages this country's lists bring up, most common first, then English: what the Languages screen offers.
+     * Before a refresh has counted them, the languages of the saved picks; empty with none.
+     */
+    List<String> seenLanguages() {
+        List<String> out = new ArrayList<>();
+        for (String c : prefs.getString("seen_languages", "").split(",")) if (!c.isEmpty()) out.add(c);
+        if (!out.isEmpty()) return out;
+        Map<String, Integer> count = new LinkedHashMap<>();
+        for (Pick p : cached()) if (!p.lang.isEmpty() && !p.lang.equals("xx")) count.merge(p.lang, 1, Integer::sum);
+        out.addAll(count.keySet());
+        out.sort((x, y) -> count.get(y) - count.get(x));
+        if (!out.isEmpty() && !out.contains("en")) out.add("en");
+        return out;
+    }
+
+    /** "Tamil", "French"; TMDB's own codes Android doesn't know by their name. */
+    static String languageName(String code) {
+        if (code.equals("cn")) return "Cantonese";
+        String name = new Locale(code).getDisplayLanguage(Locale.ENGLISH);
+        return name.isEmpty() || name.equals(code) ? code : name;
+    }
+
+    /** Counts the original languages in candidate lists, and saves them most common first (English last if absent). */
+    private void noteLanguages(boolean replace, List<JSONObject> lists) {
+        Map<String, Integer> count = new LinkedHashMap<>();
+        if (!replace) {
+            List<String> old = seenLanguages();
+            for (int i = 0; i < old.size(); i++) count.put(old.get(i), 1000 - i);  // kept, ahead of what's new
+        }
+        for (JSONObject o : lists) {
+            String c = o.optString("original_language", "");
+            if (!c.isEmpty() && !c.equals("xx")) count.merge(c, 1, Integer::sum);
+        }
+        List<String> order = new ArrayList<>(count.keySet());
+        order.sort((a, b) -> count.get(b) - count.get(a));
+        if (!order.contains("en")) order.add("en");
+        prefs.edit().putString("seen_languages", String.join(",", order)).apply();
+    }
+
     private File keyFile() { return new File(dir.getParentFile(), "tmdb_key.txt"); }
+
+    /**
+     * Where picks come from: the TMDB key, StreamRadar (RADAR), or null: none. Outside India, the key. In India,
+     * Talkies settings → Picks from chooses; until then, TMDB with a key and StreamRadar without one.
+     */
+    String source() {
+        String k = key();
+        if (!inIndia()) return k;
+        return RADAR.equals(prefs.getString("picks_from", k != null ? "tmdb" : RADAR)) ? RADAR : k;
+    }
+
+    /** StreamRadar only knows India's apps, so only a TV in India gets the choice. */
+    boolean inIndia() { return "IN".equals(Region.country(ctx)); }
+
+    /** Talkies settings → Picks from: "tmdb" or RADAR. The next refresh check fetches from it right away. */
+    void setPicksFrom(String from) { prefs.edit().putString("picks_from", from).apply(); }
 
     String key() {
         try (InputStream in = new FileInputStream(keyFile())) {
@@ -142,7 +213,7 @@ final class Trending {
 
     List<Pick> cached() {
         List<Pick> out = new ArrayList<>();
-        if (key() == null) return out;
+        if (source() == null) return out;
         try (InputStream in = new FileInputStream(new File(dir, "picks.json"))) {
             JSONArray a = new JSONArray(new String(readAll(in), StandardCharsets.UTF_8));
             for (int i = 0; i < a.length(); i++) {
@@ -192,25 +263,28 @@ final class Trending {
     }
 
     void refreshIfStale(Listener l) {
-        String key = key();
+        String key = source();
         if (key == null || running) return;
         long now = System.currentTimeMillis();
         // A new key fetches right away instead of waiting out the old key's timers.
         String cc = Region.country(ctx), was = prefs.getString("region", null);
         if (was == null) prefs.edit().putString("region", cc).apply();  // first run with countries: just remember it
         if (prefs.getInt("key_hash", 0) != key.hashCode() || prefs.getInt("version", 0) != CACHE_VERSION
-                || (was != null && !cc.equals(was))) {
-            // A new key, a new cache layout, or the TV now in another country: fetch right away.
+                || (was != null && !cc.equals(was))
+                || !prefs.getString("languages", "").equals(prefs.getString("languages_fetched", ""))) {
+            // A new key, a new cache layout, the TV now in another country, or other languages: fetch right away.
             prefs.edit().putInt("key_hash", key.hashCode()).putInt("version", CACHE_VERSION).putString("region", cc)
                     .remove("ok_at").remove("try_at").apply();
         }
         if (now - prefs.getLong("ok_at", 0) < REFRESH_MS || now - prefs.getLong("try_at", 0) < RETRY_MS) return;
         prefs.edit().putLong("try_at", now).apply();
         running = true;
+        String langs = prefs.getString("languages", "");
         worker.execute(() -> {
             try {
                 fetch(key);
-                prefs.edit().putLong("ok_at", System.currentTimeMillis()).apply();
+                // Fetched for these languages: if they changed meanwhile, the next check fetches again.
+                prefs.edit().putLong("ok_at", System.currentTimeMillis()).putString("languages_fetched", langs).apply();
                 List<Pick> all = cached();
                 main.post(() -> l.onPicks(all));
             } catch (Exception e) {
@@ -230,7 +304,8 @@ final class Trending {
         net = Executors.newFixedThreadPool(PARALLEL);
         providerLookups.clear();
         try {
-            fetchWith(key);
+            if (RADAR.equals(key)) fetchRadar();
+            else fetchWith(key);
         } finally {
             net.shutdownNow();
             providerLookups.clear();
@@ -294,29 +369,39 @@ final class Trending {
         String common = "&watch_region=" + region + "&with_watch_monetization_types=flatrate&include_adult=false"
                 + "&sort_by=popularity.desc" + (elsewhere == null ? "&with_watch_providers=" + ids : "");
 
-        // The six candidate lists, all at once.
+        // The six candidate lists, all at once. With languages chosen (Picks languages), "New in …" keeps to them, and
+        // Trending's two sides become those languages (from anywhere, not only this country) and English, if chosen.
+        Set<String> chosen = languages();
+        List<String> others = new ArrayList<>(chosen);
+        others.remove("en");
+        boolean withEnglish = chosen.isEmpty() || chosen.contains("en");
+        String only = chosen.isEmpty() ? "" : "&with_original_language=" + String.join("|", chosen);
+        String localBy = chosen.isEmpty() ? "with_origin_country=" + region : "with_original_language=" + String.join("|", others);
         String popular = "&vote_count.gte=10" + common;
         java.util.concurrent.Future<JSONObject> newFilms = later(key, "/discover/movie?with_origin_country=" + region
-                + "&primary_release_date.gte=" + day(-180) + "&primary_release_date.lte=" + day(0) + common);
+                + "&primary_release_date.gte=" + day(-180) + "&primary_release_date.lte=" + day(0) + only + common);
         java.util.concurrent.Future<JSONObject> newShows = later(key, "/discover/tv?with_origin_country=" + region
-                + "&air_date.gte=" + day(-60) + "&air_date.lte=" + day(0) + common);
-        java.util.concurrent.Future<JSONObject> localFilms = later(key, "/discover/movie?with_origin_country=" + region + popular);
-        java.util.concurrent.Future<JSONObject> localShows = later(key, "/discover/tv?with_origin_country=" + region + popular);
-        java.util.concurrent.Future<JSONObject> englishFilms = later(key, "/discover/movie?with_original_language=en" + popular);
-        java.util.concurrent.Future<JSONObject> englishShows = later(key, "/discover/tv?with_original_language=en" + popular);
+                + "&air_date.gte=" + day(-60) + "&air_date.lte=" + day(0) + only + common);
+        boolean anyLocal = chosen.isEmpty() || !others.isEmpty();
+        java.util.concurrent.Future<JSONObject> localFilms = anyLocal ? later(key, "/discover/movie?" + localBy + popular) : null;
+        java.util.concurrent.Future<JSONObject> localShows = anyLocal ? later(key, "/discover/tv?" + localBy + popular) : null;
+        java.util.concurrent.Future<JSONObject> englishFilms = withEnglish ? later(key, "/discover/movie?with_original_language=en" + popular) : null;
+        java.util.concurrent.Future<JSONObject> englishShows = withEnglish ? later(key, "/discover/tv?with_original_language=en" + popular) : null;
 
         // "New in …" first, so Trending can leave its titles out.
-        List<Pick> india = keepMixed(key, services, INDIA, new HashSet<>(), new int[]{1},
-                merge(tag(newFilms.get().getJSONArray("results"), "movie"), tag(newShows.get().getJSONArray("results"), "tv")));
+        List<JSONObject> fresh = merge(tag(results(newFilms), "movie"), tag(results(newShows), "tv"));
+        List<Pick> india = keepMixed(key, services, INDIA, new HashSet<>(), new int[]{1}, fresh);
         Set<String> inIndia = new HashSet<>();
         for (Pick p : india) inIndia.add(p.kind + p.id);
 
         // Trending: popular titles from this country and popular English titles, two of the first for each one of the
         // second. Where the country's own titles are English anyway (US, UK…), just what's popular here.
-        List<JSONObject> local = merge(tag(localFilms.get().getJSONArray("results"), "movie"),
-                tag(localShows.get().getJSONArray("results"), "tv"));
-        List<JSONObject> english = merge(tag(englishFilms.get().getJSONArray("results"), "movie"),
-                tag(englishShows.get().getJSONArray("results"), "tv"));
+        List<JSONObject> local = merge(tag(results(localFilms), "movie"), tag(results(localShows), "tv"));
+        List<JSONObject> english = merge(tag(results(englishFilms), "movie"), tag(results(englishShows), "tv"));
+        // What languages this country watches, for the Languages screen: all of them only when nothing is chosen.
+        List<JSONObject> seen = new ArrayList<>(fresh);
+        seen.addAll(local);
+        noteLanguages(chosen.isEmpty(), seen);
         List<Pick> trend = Region.englishSpeaking(region)
                 ? keepMixed(key, services, TRENDING, inIndia, new int[]{0, 1}, english, local)
                 : keepMixed(key, services, TRENDING, inIndia, new int[]{0, 0, 1}, local, english);
@@ -324,6 +409,162 @@ final class Trending {
         List<Pick> picks = new ArrayList<>(trend);
         picks.addAll(india);
         save(downloadImages(picks));
+    }
+
+    /**
+     * India without a TMDB key: StreamRadar's lists. Trending is the Top 10s of the apps installed here, taken in turn,
+     * films and series alternating; New in India is its "Just In", kept to titles on those apps. OK on a pick opens
+     * the title's page in its app where StreamRadar has a link. No genres or languages: its lists don't say.
+     */
+    private void fetchRadar() throws Exception {
+        List<String[]> apps = new ArrayList<>();
+        for (String[] a : StreamRadar.APPS) if (installed(a[2])) apps.add(a);
+        prefs.edit().putInt("matched", apps.size()).apply();
+        Log.i(TAG, "StreamRadar for " + apps.size() + " installed apps");
+        // None of the apps here: every app's lists, and each title's trailer found in YouTube.
+        String youtube = null;
+        if (apps.isEmpty()) {
+            for (String y : YOUTUBE) if (youtube == null && installed(y)) youtube = y;
+            if (youtube == null) { save(new ArrayList<>()); return; }
+            apps.addAll(java.util.Arrays.asList(StreamRadar.APPS));
+        }
+        final String trailers = youtube;
+        List<java.util.concurrent.Future<JSONArray>> tops = new ArrayList<>();
+        for (String[] a : apps) {
+            tops.add(net.submit(() -> StreamRadar.top(a[0], "movie")));
+            tops.add(net.submit(() -> StreamRadar.top(a[0], "series")));
+        }
+        java.util.concurrent.Future<JSONArray> newFilms = net.submit(() -> StreamRadar.justIn("movie"));
+        java.util.concurrent.Future<JSONArray> newShows = net.submit(() -> StreamRadar.justIn("series"));
+
+        // Trending: each app's first title, then each app's second…; a list that fails is left out.
+        List<List<JSONObject>> queues = new ArrayList<>();
+        for (int i = 0; i < apps.size(); i++) {
+            List<JSONObject> q = alternate(radarList(tops.get(2 * i)), radarList(tops.get(2 * i + 1)));
+            for (JSONObject m : q) m.put("_app", apps.get(i)[0]);
+            queues.add(q);
+        }
+        List<Pick> trend = new ArrayList<>();
+        Set<String> taken = new HashSet<>();
+        for (int j = 0; trend.size() < MAX_PICKS; j++) {
+            boolean any = false;
+            for (List<JSONObject> q : queues) {
+                if (j >= q.size() || trend.size() >= MAX_PICKS) continue;
+                any = true;
+                JSONObject m = q.get(j);
+                if (m.optString("background").isEmpty() || !taken.add(m.getString("id"))) continue;
+                trend.add(radarPick(m, StreamRadar.app(m.getString("_app")), TRENDING));
+            }
+            if (!any) break;
+        }
+
+        // New in India: newest first, films and series alternating, on an app installed here (one lookup each).
+        List<JSONObject> fresh = alternate(radarList(newFilms), radarList(newShows));
+        fresh.removeIf(m -> m.optString("background").isEmpty() || taken.contains(m.optString("id")));
+        if (fresh.size() > MAX_CHECKS) fresh = fresh.subList(0, MAX_CHECKS);
+        List<java.util.concurrent.Future<String[]>> found = new ArrayList<>();
+        for (JSONObject m : fresh) found.add(net.submit(() -> StreamRadar.where(m.getString("type"), m.getString("id"),
+                pkg -> trailers != null || installed(pkg))));
+        List<Pick> india = new ArrayList<>();
+        for (int i = 0; i < fresh.size() && india.size() < MAX_PICKS; i++) {
+            String[] w = radarGet(found.get(i));
+            if (w == null) continue;
+            Pick p = radarPick(fresh.get(i), StreamRadar.app(w[0]), INDIA);
+            p.intentUri = link(w[1], p.pkg);
+            india.add(p);
+        }
+
+        // Trending's links, all at once.
+        List<java.util.concurrent.Future<String[]>> links = new ArrayList<>();
+        for (Pick p : trend) {
+            String type = p.kind.equals("tv") ? "series" : "movie", id = p.intentUri;
+            links.add(net.submit(() -> trailers != null ? null : StreamRadar.where(type, id, pkg -> pkg.equals(p.pkg))));
+        }
+        for (int i = 0; i < trend.size(); i++) {
+            String[] w = radarGet(links.get(i));
+            trend.get(i).intentUri = w == null ? null : link(w[1], trend.get(i).pkg);
+        }
+        if (trailers != null) {
+            for (Pick p : trend) asTrailer(p, trailers);
+            for (Pick p : india) asTrailer(p, trailers);
+        }
+        Log.i(TAG, "StreamRadar: " + trend.size() + " trending, " + india.size() + " new");
+        List<Pick> picks = new ArrayList<>(trend);
+        picks.addAll(india);
+        save(downloadImages(picks));
+    }
+
+    /** Films and series taken in turn. */
+    private static List<JSONObject> alternate(JSONArray films, JSONArray shows) throws Exception {
+        List<JSONObject> out = new ArrayList<>();
+        for (int j = 0; j < Math.max(films.length(), shows.length()); j++) {
+            if (j < films.length()) out.add(films.getJSONObject(j));
+            if (j < shows.length()) out.add(shows.getJSONObject(j));
+        }
+        return out;
+    }
+
+    /** A StreamRadar title as a pick on this app. Until its link is looked up, intentUri holds StreamRadar's id. */
+    private Pick radarPick(JSONObject m, String[] app, String tab) throws Exception {
+        Pick p = new Pick();
+        String id = m.getString("id");
+        p.id = id.matches("tt\\d{1,9}") ? Integer.parseInt(id.substring(2)) : id.hashCode() & 0x7fffffff;
+        p.kind = "series".equals(m.optString("type")) ? "tv" : "movie";
+        p.tab = tab;
+        p.title = m.optString("name");
+        p.pkg = app[2];
+        p.service = app[3];
+        p.meta = (p.kind.equals("tv") ? "Series" : "Film") + " · " + p.service;
+        p.intentUri = id;
+        p.image = new File(dir, "sr_" + p.kind + "_" + p.id + "_w1280.jpg");
+        p.backdropPath = m.getString("background");
+        // Only TMDB's posters: the others come from many sites, some small or cropped. The backdrop does without.
+        String poster = m.optString("poster");
+        if (poster.startsWith("https://image.tmdb.org/")) {
+            p.poster = new File(dir, "sr_" + p.kind + "_" + p.id + "_poster.jpg");
+            p.posterPath = poster.replaceFirst("/t/p/[^/]+/", "/t/p/w342/");
+        }
+        return p;
+    }
+
+    /** The pick opens a YouTube search for its trailer, saying where the title streams. StreamRadar has no trailer of its own. */
+    private static void asTrailer(Pick p, String youtube) {
+        p.pkg = youtube;
+        p.service = "Trailer · on " + p.service;
+        p.meta = (p.kind.equals("tv") ? "Series" : "Film") + " · " + p.service;
+        p.intentUri = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(
+                "https://www.youtube.com/results?search_query=" + android.net.Uri.encode(p.title + " trailer"))).setPackage(youtube)
+                .toUri(android.content.Intent.URI_INTENT_SCHEME);
+    }
+
+    /** The app's page for the title, opened in that app. */
+    private static String link(String url, String pkg) {
+        if (url == null || !url.startsWith("https://")) return null;
+        return new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).setPackage(pkg)
+                .toUri(android.content.Intent.URI_INTENT_SCHEME);
+    }
+
+    /** A StreamRadar list, or none if it failed: the other apps' lists still make picks. */
+    private static JSONArray radarList(java.util.concurrent.Future<JSONArray> f) {
+        try {
+            return f.get();
+        } catch (Exception e) {
+            Log.w(TAG, "StreamRadar list failed: " + e.getCause());
+            return new JSONArray();
+        }
+    }
+
+    private static String[] radarGet(java.util.concurrent.Future<String[]> f) {
+        try {
+            return f.get();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** A candidate list's titles; none for a list that wasn't asked for. */
+    private static JSONArray results(java.util.concurrent.Future<JSONObject> list) throws Exception {
+        return list == null ? new JSONArray() : list.get().getJSONArray("results");
     }
 
     private java.util.concurrent.Future<JSONObject> later(String key, String path) {
@@ -348,9 +589,14 @@ final class Trending {
         List<java.util.concurrent.Future<Boolean>> jobs = new ArrayList<>();
         for (Pick p : picks) {
             jobs.add(net.submit(() -> {
-                if (!p.image.isFile()) download(BACKDROPS + p.backdropPath, p.image);
+                // StreamRadar's pictures come as whole addresses.
+                if (!p.image.isFile()) download(p.backdropPath.startsWith("http") ? p.backdropPath : BACKDROPS + p.backdropPath, p.image);
                 if (p.poster != null && !p.poster.isFile()) {
-                    try { download(POSTERS + p.posterPath, p.poster); } catch (IOException e) { p.poster = null; }
+                    try {
+                        download(p.posterPath.startsWith("http") ? p.posterPath : POSTERS + p.posterPath, p.poster);
+                    } catch (IOException e) {
+                        p.poster = null;
+                    }
                 }
                 return true;
             }));
@@ -609,8 +855,23 @@ final class Trending {
         }
     }
 
-    /** TMDB accepts either a v3 API key (query parameter) or a v4 read access token (Bearer header). */
+    /**
+     * TMDB accepts either a v3 API key (query parameter) or a v4 read access token (Bearer header). A connection
+     * reset is tried up to twice more, a moment apart: some Indian networks drop TMDB connections now and then, and
+     * one lost request out of a hundred would otherwise lose the whole refresh.
+     */
     private static JSONObject get(String key, String path) throws Exception {
+        for (int attempt = 0; ; attempt++) {
+            try {
+                return getOnce(key, path);
+            } catch (java.net.SocketException e) {
+                if (attempt == 2) throw e;
+                Thread.sleep(800L * (attempt + 1));
+            }
+        }
+    }
+
+    private static JSONObject getOnce(String key, String path) throws Exception {
         boolean bearer = key.length() > 40;
         String url = API + path + (bearer ? "" : (path.contains("?") ? "&" : "?") + "api_key=" + key);
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();

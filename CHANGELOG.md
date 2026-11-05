@@ -3,6 +3,198 @@
 Versions are numbered *major.minor.fix*. While Talkies is in beta they start with 0: a new minor number brings new
 features, a new fix number only fixes. The version shows in Talkies settings → About.
 
+## Unreleased
+
+### New
+- **Emoji on the Board.** Hearts and other emoji in your Screensaver message now get a tile of their own, instead of a
+  blank.
+- **A live score over TV.** Hold OK on a match → **Pin over TV**: a small card stays in a corner, updating while you
+  watch anything (not on Talkies' Home or the screensaver), and leaves about five minutes after the match ends. Control Center unpins it. An idea from Gulam.
+
+### Changed
+- **Rows the screen cuts off fade away.** Moving down the page, the strips of the rows above and below fade out, and
+  come back once they fit. An idea from dossantosee in Discussion #17.
+- **Many more jobs for Remote keys.** A button can now go to Previous app, Resume watching (the first Continue card) or
+  one input you choose, control Play / pause or Mute, or open Talkies settings, Sound output, Bluetooth, the Screensaver
+  or Turn off, on a press or when held. Asked for by Abdullah AlQudaihi.
+- **All apps button.** Talkies settings → **All apps button** hides the round button at the end of the dock, so the apps
+  fill its width. All apps is still below, further down the page. Asked for by athul.
+- **TV's screensaver.** A new row in Talkies settings makes Talkies the TV's screensaver if it has the
+  `WRITE_SECURE_SETTINGS` grant, and shows how otherwise, for TVs whose settings don't list it. Reported on a Sony Bravia.
+
+### Fixed
+- **Continue shows what you just watched.** Today's titles now come before cards months old, YouTube can show up to
+  four from the last two days, and each app keeps its own share of the saved list. A YouTube card opens that video,
+  and a JioHotstar title opened from its card keeps the show's name and picture.
+
+## 1.2.8 — 4 November 2026
+
+### New
+- **A welcome card on a new install.** The first time Home shows, if the Home button isn't set up yet, a small card
+  takes you straight to its switch. Later closes it for good; Talkies settings → Finish setup stays.
+- **A device turns on.** With Home on screen, a console or box on HDMI that switches on gets a card: "PlayStation 5
+  is on · Switch to HDMI 2". Talkies settings → **A device turns on** turns it off. An idea from Home Deck.
+- **Edit inputs.** Talkies settings → **Edit inputs** names a port ("Living room box") or hides it (a soundbar's ARC
+  port, Live TV without an aerial). An idea from Home Deck, and from AndyVRD in Discussion #22.
+- **Talkies screensaver.** A dim clock with seconds, the date and the weather, moving every 20 seconds so nothing burns in. Pick
+  it in the TV's Settings → Screen saver. Talkies settings → **Screensaver** puts your wallpaper (dimmed, drifting) or
+  the picks (a new one each minute) behind it. An idea from Home Deck.
+- **Board screensaver.** Talkies settings → **Screensaver → Board**: a split-flap board, like a station's departures
+  board, with the time to the second, the date, the weather and the day's high and low. Only the letters that change
+  flip, and every 15 seconds a wave turns them all once round. An idea from Departures.
+- **Screensaver message.** Two short lines typed on your phone ("Dinner at 8"), shown on the screensaver. Talkies
+  settings → **Screensaver message** shows the QR code. An idea from Departures.
+- **Quiet hours.** The screensaver dims at night, 11 PM to 7 AM unless you pick other hours (or Off) in Talkies
+  settings → **Quiet hours**. An idea from Departures.
+- **Rain coming.** The weather line adds "Rain around 4 PM" when rain is likely in the next hours and it's dry now.
+  An idea from Departures.
+- **Weather without setup.** Until you set a location, Talkies goes by your internet address: roughly your city, looked
+  up once a week (ipwho.is, then ipapi.co or geojs.io). Talkies settings → Keys and location → **Weather location**
+  shows "Near Bengaluru"; set a place for better weather, or Remove to turn it off. A location you already set stays
+  in charge, and removing one still leaves just the time and date. An idea from tvOS Launcher, Aerial and Plume.
+- **A backup for the weather.** If Open-Meteo doesn't answer, MET Norway's forecast fills in. An idea from tvOS Launcher.
+- **What's playing on Home.** While music plays, the line under the icons shows the song, the artist and the app.
+  An idea from Home Deck.
+
+### Changed
+- **Blurred art as the background.** Talkies settings → **Background** → **Blurred art** shows the focused pick or
+  Continue card's own picture, blurred, behind Home. App colour stays the default, and apps in the dock keep their
+  colour either way. Asked for by AndyVRD in Discussion #22, who pointed to Free My TV.
+- **Continue apps.** Talkies settings → **Continue apps** turns each app on or off for the Continue tab and the Watch
+  Next row. Asked for by AndyVRD.
+- **Bigger apps.** Dock size now goes down to 4 apps, with larger tiles, and Talkies settings → **All apps size** shows
+  6, 5 or 4 across. Asked for by Abdullah AlQudaihi.
+- **More for Remote keys.** A button can now open Control Center, TV settings or Wi-Fi, on a press or when held. Asked
+  for by Abdullah AlQudaihi.
+- **Refresh Continue.** Hold OK on a Continue card → **Refresh Continue** reads what the apps have reported again. Asked
+  for by Abdullah AlQudaihi.
+- **Focus: Lift or Ring.** Talkies settings → **Focus** → **Ring** keeps a white outline on whatever is selected, for
+  busy wallpapers where the lift and shadow are hard to see. Lift is still the default. Asked for by kdkasucl.
+- **StreamRadar picks without its apps.** With none of its six apps installed, Trending and New in India stayed empty and
+  their tabs vanished. They now show every app's lists, and OK searches YouTube for the trailer. Reported by kdkasucl.
+- **TV makers' extras hidden.** Manuals, firmware updaters, store demos and factory tools are left out of All apps
+  from the start (Talkies settings → Hidden apps shows one again). The list is Home Deck's.
+- **Effects: Auto notices a slow TV.** Talkies times its frames the first few times you move with the arrows, and a
+  TV that turns out slow gets Lite. An idea from Home Deck.
+
+### Fixed
+- **Updates that can't install now say so.** On a box with no install screen, the update downloaded and then nothing
+  happened. Talkies now says so and points to the computer fallback. Found by wpfyorg on a Jio set-top box.
+- **Back to Talkies after an update.** On TVs that bring back the last app instead of the built-in launcher, updating
+  from Talkies left you in that app. Talkies now comes back. Reported by Shahnawaz on a TCL TV.
+- **Dock tiles no longer shrink for empty places.** With fewer apps than Dock size, the tiles are sized for the apps
+  there are. Reported by AndyVRD.
+- **Remote key menus in the right place.** A button set to Inputs or Recent apps, pressed while scrolled down the page,
+  put the menu off the top of the screen.
+- **Send from your phone on any home network.** The QR code page now also works when the router hands out
+  addresses outside the usual private ranges; there it answers only phones on the TV's own network
+  ([#20](https://github.com/rajupp/talkies/issues/20)). Thanks to wpfyorg for tracking down the cause.
+
+## 1.2.7 — 3 November 2026
+
+### New
+- **Picks in India without a key.** Until you add a TMDB key, a TV in India fills Trending with the Top 10s of its
+  apps (JioHotstar, Netflix, Prime Video, ZEE5, SonyLIV, Apple TV) and *New in India* with what's just come out on
+  them, from StreamRadar India. OK opens the title's page in its app where StreamRadar has a link. A TMDB key takes
+  over at once, and Talkies settings → **Picks from** (on TVs in India) switches between TMDB and StreamRadar any
+  time. Thanks to Swakshan for pointing it out.
+- **NBA and NFL scores**, from the same ESPN scoreboard as football: live games, start times and results, away
+  team first ("CHI at SEA").
+- **Sports.** Talkies settings → **Sports** (was Live scores) turns Cricket, Football, NBA and NFL on or off one by
+  one, in any country. Cricket and football to start, plus the NBA and NFL in the US and Canada; your Live scores
+  choice carries over. **Football leagues** shows only while Football is on. In the US and Canada, football is
+  called Soccer.
+- **Country.** Talkies settings → **Country** picks the country the picks and scores are for: Automatic (by the
+  TV's time zone), common countries first, or any country A to Z. The *New in …* tab, Trending and the cricket and
+  football defaults follow at once; the weather's °C/°F stays with where the TV is. Suggested on X.
+
+### Changed
+- **Talkies settings in groups.** Its rows are now under five headings, most used first: Look, For You and scores,
+  Apps and inputs, Remote and power, and Talkies (keys, updates, About).
+
+### Fixed
+- **Picks on flaky networks.** A TMDB request whose connection is reset is tried up to twice more, instead of the
+  whole refresh failing until the next try half an hour later.
+
+## 1.2.6 — 2 November 2026
+
+### New
+- **Inputs on Home.** Talkies settings → Inputs on Home puts an HDMI or AV port on Home as a tile, named after the
+  device on it (*PlayStation 5*, *Set-top box*): one press switches the TV to it. An idea from Aerial.
+- **Open an app or input at power-on.** Talkies settings → At power-on can now open HDMI 1 (with your set-top box),
+  or any app, each time the TV turns on, instead of Talkies. An idea from Aerial.
+- **Effects: Lite** for slow TVs: no glow behind the apps, and focus and scrolling move at once instead of gliding.
+  **Auto**, the default, picks Lite on TVs with under 1.6 GB of memory. An idea from Aerial.
+- **Report a problem** (Talkies settings → About): a QR code that opens a GitHub bug report on your phone with your
+  TV's model, versions and key settings already filled in.
+- **What's new after an update.** The first time Home shows after Talkies updates, a card lists a few of the new
+  version's changes in a line each; **See all changes** (also in Talkies settings → About → What's new) opens all of
+  them in a panel on the right, with Updates at the top. Short notes written for the TV, built in, so it works
+  offline. An idea from Plume.
+- **A weather icon** before the weather at the top left: a small line drawing of the sky (sun, moon, partly cloudy
+  by day or night, cloud, rain, snow, thunder, fog), in the text's colour.
+
+### Changed
+- **Focus without a ring.** The focused card or app grows and lifts on a soft shadow, like Plume's, instead of
+  wearing a white ring with a glow. Only an app you're moving (hold OK → Move) gets a ring, a thin one.
+- **Cricket needs no key.** Scores now come from ESPN, like football: no CricketData account, no daily limit, and
+  they refresh every minute during a match instead of every 15. The Cricket key row, its box on the phone page and
+  `set-cricket-key.sh` are gone. Thanks @Swakshan.
+
+### Fixed
+- **Finish setup no longer gets stuck on Notification access** on TVs whose settings have no such screen (many
+  Android 8 TVs), where OK did nothing. It switches it on itself when Talkies has the `WRITE_SECURE_SETTINGS` grant;
+  otherwise the step is marked optional, stops counting as a step left, and OK shows the one adb command that
+  switches it on. Thanks @123nitin.
+- **The first card in a row is no longer cut off** when it grows on focus: the first card of each channel row and
+  the first column and row of All apps lost a strip at their left (and All apps' top) edge. Thanks @ag7tweets and
+  @taurus77777.
+- **Picks no longer go blank for a moment** as you move along Trending or New in your country: the card that grows
+  kept showing its poster until its wide picture was ready, instead of an empty card on slower TVs.
+
+### Removed
+- **Free up memory and Close them all.** Android lets an app close only its own background processes (on Android 14,
+  and on some TVs before it), so neither could close YouTube, Netflix or anything else, and the memory they reported
+  as freed was just the TV's own coming and going. Android closes apps itself when memory runs low. Thanks
+  @arjunmr97 for noticing.
+
+## 1.2.5 — 1 November 2026
+
+### New
+- **Phone apps in All apps.** Apps with no TV version (Chrome, MacroDroid, Speedtest… installed from a file) now
+  show in All apps, with a tile made from their icon. **Phone apps** in Talkies settings hides them again. An idea
+  from @dossantosee.
+- **Süper Lig and Turkey's football defaults** (Süper Lig, Champions League, Premier League), and a new set of
+  leagues is fetched straight away. Thanks @codermert.
+
+### Fixed
+- **Holding Home opens the dashboard on streaming boxes too** (Mi Box, Chromecast, Google TV Streamer…), and where
+  Talkies is the default home app. 1.2.4 only did it on TVs. Thanks @Greyxvvl.
+
+### Changed
+- **Remote keys is On by default**, so Home goes straight to Talkies without Google TV's home showing first, as with
+  other launchers. If holding Volume then changes it only one step per press on your TV, turn it Off (Talkies
+  settings → Remote keys). If you had turned it Off, it stays Off.
+- **With Remote keys Off, Google TV's home shows for less time** before Talkies covers it.
+
+## 1.2.4 — 31 October 2026
+
+### Fixed
+- **Wallpapers are sharp.** Your picture showed at half the screen's resolution and in reduced colour (soft, with
+  banding in skies); now it's full HD, and it takes less memory than before. Thanks @AntonyBOrtega.
+- **Holding Home opens Google TV's dashboard again** (Screensaver, Inputs, Picture, Wi-Fi…) on TVs where Talkies
+  catches Home; a short press still opens Talkies. Thanks @Greyxvvl.
+
+## 1.2.3 — 31 October 2026
+
+### New
+- **A wallpaper folder.** Talkies settings → Wallpaper → From this TV now lists your folders first (on the TV and USB
+  drives): OK on one shows a new picture from it each day, in name order. Choosing one picture, or **Remove your
+  picture**, stops it.
+- **Picks languages** (Talkies settings, under For You): show Trending and New in … only in the languages you
+  choose, say Tamil and English. The list offers the languages your country's picks come in; All is the default.
+  An idea from @MaheshKRamasamy.
+
 ## 1.2.2 — 30 October 2026
 
 ### New

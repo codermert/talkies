@@ -34,16 +34,19 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Football scores from ESPN's public scoreboard (site.api.espn.com): no key, every major league. It isn't a documented
+ * Football scores from ESPN's public scoreboard (site.api.espn.com): no key, every major league, and the NBA and NFL
+ * when they're on in Talkies settings → Sports (their games show away team first, "CHI at SEA", as Americans write
+ * them). It isn't a documented
  * API, so it may change without notice; if it fails, the Football row just stays away. Leagues: the ones you chose in
- * Control Center → Football leagues, else a default set for the TV's country (Region). Shows matches live now,
+ * Talkies settings → Football leagues, else a default set for the TV's country (Region). Shows matches live now,
  * starting in the next day, or finished in the last 12 hours. Asks every 15 minutes, and every minute for the
  * leagues with a match on (at least 30 s apart, so every minute tick of the home screen gets one), only while the home screen is showing. The matches reuse Cricket.Match, so the score line,
  * row and cards are drawn the same way.
  */
 final class Football {
     private static final String TAG = "GlassFootball";
-    private static final String API = "https://site.api.espn.com/apis/site/v2/sports/soccer/";
+    /** Followed by the league's path: "soccer/eng.1", or the id itself for the other sports ("basketball/nba"). */
+    private static final String API = "https://site.api.espn.com/apis/site/v2/sports/";
     private static final long FULL_MS = 15 * 60_000L, LIVE_MS = 30_000L, RETRY_MS = 5 * 60_000L;
     private static final long PAST_MS = 12 * 3600_000L, AHEAD_MS = 24 * 3600_000L;
     private static final int MAX = 12;
@@ -59,15 +62,20 @@ final class Football {
             {"fra.1", "Ligue 1", "Ligue 1"}, {"uefa.europa", "Europa League", "UEL"},
             {"ind.1", "Indian Super League", "ISL"}, {"usa.1", "MLS", "MLS"}, {"ned.1", "Eredivisie", "Eredivisie"},
             {"por.1", "Primeira Liga", "Primeira"}, {"sco.1", "Scottish Premiership", "SPFL"},
+            {"tur.1", "S\u00fcper Lig", "S\u00fcper Lig"},
             {"bra.1", "Brasileirão", "Brazil"}, {"arg.1", "Liga Profesional", "Argentina"},
             {"mex.1", "Liga MX", "Liga MX"}, {"ksa.1", "Saudi Pro League", "Saudi Pro"}, {"aus.1", "A-League", "A-League"},
             {"jpn.1", "J1 League", "J1"}, {"eng.fa", "FA Cup", "FA Cup"}, {"fifa.world", "World Cup", "World Cup"},
             {"uefa.euro", "Euro", "Euro"}};
+    /** Not leagues to pick but sports of their own (Talkies settings → Sports), from the same scoreboard. */
+    static final String NFL = "football/nfl", NBA = "basketball/nba";
+    private static final String[][] AMERICAN = {{NFL, "NFL", "NFL"}, {NBA, "NBA", "NBA"}};
     /** Each country's default leagues (the World Cup and the Euros join everywhere: they only have matches when on). */
     private static final Map<String, String[]> DEFAULTS = new HashMap<>();
     static {
         DEFAULTS.put("TR", new String[]{"tur.1", "uefa.champions", "eng.1"});
         DEFAULTS.put("IN", new String[]{"eng.1", "uefa.champions", "ind.1"});
+        DEFAULTS.put("TR", new String[]{"tur.1", "uefa.champions", "eng.1"});
         DEFAULTS.put("GB", new String[]{"eng.1", "uefa.champions", "sco.1"});
         DEFAULTS.put("IE", new String[]{"eng.1", "uefa.champions"});
         DEFAULTS.put("US", new String[]{"usa.1", "eng.1", "uefa.champions"});
@@ -95,6 +103,8 @@ final class Football {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
     private boolean running;
+    /** Talkies settings → Sports: football (the leagues below), the NFL and the NBA, each on or off. */
+    private boolean soccer = true, nfl, nba;
 
     Football(Context c) {
         ctx = c.getApplicationContext();
@@ -106,16 +116,60 @@ final class Football {
 
     static String leagueName(String id) {
         for (String[] l : LEAGUES) if (l[0].equals(id)) return l[1];
+        for (String[] l : AMERICAN) if (l[0].equals(id)) return l[1];
         return id;
     }
+
+    /**
+     * Your choice, or until you make one: cricket and football everywhere, and the NBA and NFL too in the US and
+     * Canada. The old Live scores setting ("both", "cricket", "football", "off") carries over.
+     */
+    static Set<String> sportsOn(Context c) {
+        Set<String> on = new java.util.HashSet<>();
+        SharedPreferences home = c.getSharedPreferences("home", Context.MODE_PRIVATE);
+        String cc = Region.country(c), saved = home.getString("sports", null);
+        if (saved != null) {
+            for (String id : saved.split(",")) if (!id.isEmpty()) on.add(id);
+        } else {
+            String old = home.getString("scores", "both");
+            if (old.equals("both") || old.equals("cricket")) on.add("cricket");
+            if (old.equals("both") || old.equals("football")) on.add("football");
+            if (!home.contains("scores") && (cc.equals("US") || cc.equals("CA"))) { on.add("nba"); on.add("nfl"); }
+        }
+        return on;
+    }
+
+    void setSports(boolean soccer, boolean nfl, boolean nba) {
+        this.soccer = soccer;
+        this.nfl = nfl;
+        this.nba = nba;
+    }
+
+    /** The NBA and NFL: not football as the rest of the world means it. */
+    static boolean american(String id) { return id.contains("/"); }
 
     static String leagueShort(String id) {
         for (String[] l : LEAGUES) if (l[0].equals(id)) return l[2];
+        for (String[] l : AMERICAN) if (l[0].equals(id)) return l[2];
         return id;
     }
 
-    /** The leagues to show, in menu order: your choice, or the TV's country's defaults. */
+    /**
+     * What to fetch and show, in the order live games come first: the football leagues (if football is on), and the
+     * NFL and NBA if they're on, ahead of football in the US and Canada and after it elsewhere.
+     */
     List<String> leagues() {
+        List<String> us = new ArrayList<>();
+        if (nfl) us.add(NFL);
+        if (nba) us.add(NBA);
+        List<String> out = new ArrayList<>(soccer ? footballLeagues() : new ArrayList<>());
+        String cc = Region.country(ctx);
+        out.addAll(cc.equals("US") || cc.equals("CA") ? 0 : out.size(), us);
+        return out;
+    }
+
+    /** The football leagues to show, in menu order: your choice, or the TV's country's defaults. */
+    List<String> footballLeagues() {
         String saved = prefs.getString("leagues", null);
         Set<String> on = new LinkedHashSet<>();
         if (saved != null) {
@@ -135,7 +189,7 @@ final class Football {
 
     /** Turns one league on or off; the defaults become your own list from then on. */
     void toggle(String id) {
-        List<String> on = leagues();
+        List<String> on = footballLeagues();
         if (!on.remove(id)) on.add(id);
         prefs.edit().putString("leagues", String.join(",", on)).remove("ok_at").remove("try_at").apply();
     }
@@ -173,7 +227,7 @@ final class Football {
         if (running) return;
         List<String> on = leagues();
         if (on.isEmpty()) return;
-        // A new set of leagues (a new default after an update, say): fetch now, not when the last list goes stale.
+        // A new set of leagues (a country's new default after an update, say): fetch now, not when the last list goes stale.
         String sig = String.join(",", on);
         if (!sig.equals(prefs.getString("sig", ""))) prefs.edit().putString("sig", sig).remove("ok_at").remove("try_at").apply();
         long now = System.currentTimeMillis();
@@ -225,7 +279,7 @@ final class Football {
             if (!on.contains(league)) continue;
             JSONObject d;
             try {
-                d = get(API + league + "/scoreboard?dates=" + date);
+                d = get(API + (american(league) ? league : "soccer/" + league) + "/scoreboard?dates=" + date);
             } catch (IOException e) {
                 Log.w(TAG, league + " " + date + ": " + e.getMessage());
                 continue;
@@ -291,6 +345,8 @@ final class Football {
         if (teams.length() != 2) return null;
         JSONObject home = teams.getJSONObject(0), away = teams.getJSONObject(1);
         if ("away".equals(home.optString("homeAway"))) { JSONObject t = home; home = away; away = t; }
+        // The NBA and NFL put the away team first ("CHI at SEA"); "home" is just whichever comes first below.
+        if (american(league)) { JSONObject t = home; home = away; away = t; }
         Date at = parseUtc(e.optString("date"));
         if (at == null) return null;
         String state = type.optString("state");  // pre, in, post
@@ -305,7 +361,8 @@ final class Football {
         // "67'", "HT", "FT", "Postponed": what the card and the score line say.
         String status;
         if (name.contains("POSTPONED") || name.contains("CANCELED") || name.contains("ABANDONED")) status = type.optString("description");
-        else if ("in".equals(state)) status = name.contains("HALFTIME") ? "Half-time" : st.optString("displayClock");
+        else if ("in".equals(state) && name.contains("HALFTIME")) status = "Half-time";
+        else if ("in".equals(state)) status = american(league) ? type.optString("shortDetail") : st.optString("displayClock");  // "8:28 - 4th"
         else if ("post".equals(state)) status = type.optString("detail", "FT").replace("FT", "Full time");
         else status = "";
         o.put("status", status);
@@ -341,7 +398,8 @@ final class Football {
         m.img1 = o.optString("img1");
         m.img2 = o.optString("img2");
         m.status = o.optString("status");
-        m.name = m.full1 + " v " + m.full2;
+        if (american(o.optString("league"))) m.vs = "at";
+        m.name = m.full1 + " " + m.vs + " " + m.full2;
         m.start = m.live || m.ended ? null
                 : new SimpleDateFormat("HH:mm", Locale.US).format(new Date(o.optLong("at"))).toLowerCase(Locale.ROOT);
         if (!m.live && !m.ended && m.status.isEmpty()) {
