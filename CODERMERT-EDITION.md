@@ -13,8 +13,15 @@ upstream 1.2.8 plus its unreleased main. Everything of upstream's is still here;
 - **Home is caught directly**, so Google TV's home screen never starts (it cost 80-200 MB of RAM). The price is
   HDMI-CEC "One Touch Play" on a streaming box.
 - **Weather city** (a list of big cities) and a **Developer** section at the top of Talkies settings.
+- **Turkish matches on the score line:** in Turkey the default league is the Süper Lig only, cricket is on by default only
+  where it is followed, and matches are looked for three days ahead, so the line is a Turkish match.
 - **Smoother loading:** shimmering placeholders on cards, a picture cache, cached fonts, the first cards built
   before the rest.
+
+## Download
+
+[**talkies-codermert.apk**](https://github.com/codermert/talkies/releases/latest/download/talkies-codermert.apk) (289 KB),
+from the [latest release](https://github.com/codermert/talkies/releases/latest). SHA-256: `46b1acd9e9c2d8c2e6b4e2a3a5a7347e399c7bfaf7082f33a0ea2dcd9f37f9cc`
 
 ## Install
 
