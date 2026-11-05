@@ -360,9 +360,105 @@ public class HomeActivity extends Activity {
             focusDock(dockIdx);
             openFromKey(getIntent().getStringExtra(RemoteKeys.EXTRA_OPEN));
         });
+        if (introWanted(state)) showIntro();
     }
 
     private int px(float v) { return Math.round(v * dp); }
+
+    // ---------------------------------------------------------------- opening animation
+
+    private View introView;
+
+    /** A cold start from the launcher, not Home finding Talkies running, and not a remote-key or backup launch. */
+    private boolean introWanted(Bundle saved) {
+        Intent in = getIntent();
+        return saved == null && prefs.getBoolean("intro", true) && in != null
+                && in.getStringExtra(RemoteKeys.EXTRA_OPEN) == null
+                && !in.getBooleanExtra("talkies_backup", false) && !in.getBooleanExtra("talkies_restore", false);
+    }
+
+    /**
+     * The name drawn in over a dark screen with a light passing over it and a curve drawing itself underneath, then
+     * the home screen showing through (about 2.3 s). It sits still while it plays: the home screen is already built
+     * under it, and every step is a fade, a slide or one short stroke, which a slow TV can keep up with.
+     */
+    private void showIntro() {
+        final FrameLayout o = new FrameLayout(this);
+        o.setBackgroundColor(0xFF08090C);
+        o.setClickable(true);
+        o.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        final FrameLayout word = new FrameLayout(this);
+        word.setPadding(px(24), px(4), px(24), px(4));
+        TextView name = new TextView(this);
+        name.setText("Talkies");
+        name.setTextSize(68);
+        name.setTextColor(0xFFF5F5F7);
+        name.setTypeface(Faces.outfit(this, 800));
+        name.setLetterSpacing(-0.02f);
+        name.setIncludeFontPadding(false);
+        word.addView(name, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        final View sweep = new View(this);
+        sweep.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0x00FFFFFF, 0x66FFFFFF, 0x00FFFFFF}));
+        // A fixed height: MATCH_PARENT inside a wrapping parent would measure as tall as the whole screen.
+        word.addView(sweep, new FrameLayout.LayoutParams(px(130), px(82), Gravity.CENTER_VERTICAL));
+        col.addView(word, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        final OpeningArc arc = new OpeningArc(this);
+        LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(px(250), px(26));
+        al.topMargin = px(2);
+        col.addView(arc, al);
+
+        final TextView by = new TextView(this);
+        by.setText("by " + DEV_NAME);
+        by.setTextSize(14);
+        by.setLetterSpacing(0.14f);
+        by.setTextColor(0xFFA1A1A6);
+        by.setTypeface(Faces.outfit(this, 500));
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bl.topMargin = px(14);
+        col.addView(by, bl);
+        o.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        ((ViewGroup) root).addView(o, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        introView = o;
+
+        word.setAlpha(0f);
+        word.setScaleX(0.9f);
+        word.setScaleY(0.9f);
+        by.setAlpha(0f);
+        by.setTranslationY(px(6));
+        sweep.setAlpha(0f);
+        final android.view.animation.Interpolator out = new android.view.animation.DecelerateInterpolator(1.6f);
+        word.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(150).setDuration(620).setInterpolator(out).withLayer().start();
+        android.animation.ValueAnimator draw = android.animation.ValueAnimator.ofFloat(0f, 1f);
+        draw.setStartDelay(560);
+        draw.setDuration(780);
+        draw.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+        draw.addUpdateListener(a -> arc.setProgress((Float) a.getAnimatedValue()));
+        draw.start();
+        word.post(() -> {
+            sweep.setTranslationX(-px(150));
+            sweep.setAlpha(1f);
+            sweep.animate().translationX(word.getWidth() + px(20)).setStartDelay(880).setDuration(760)
+                    .setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator()).withLayer().start();
+        });
+        by.animate().alpha(1f).translationY(0f).setStartDelay(820).setDuration(480).setInterpolator(out).withLayer().start();
+        o.animate().alpha(0f).scaleX(1.05f).scaleY(1.05f).setStartDelay(1900).setDuration(460)
+                .setInterpolator(new android.view.animation.AccelerateInterpolator(1.2f)).withLayer()
+                .withEndAction(() -> { ((ViewGroup) root).removeView(o); if (introView == o) introView = null; }).start();
+    }
+
+    /** Fades the opening animation out now (a button was pressed). */
+    private void endIntro(boolean quick) {
+        final View o = introView;
+        if (o == null) return;
+        o.animate().cancel();
+        o.animate().alpha(0f).setDuration(quick ? 160 : 450).setStartDelay(0)
+                .withEndAction(() -> { ((ViewGroup) root).removeView(o); if (introView == o) introView = null; }).start();
+    }
 
     // ---------------------------------------------------------------- theme
 
@@ -804,7 +900,7 @@ public class HomeActivity extends Activity {
      * cost frames, and Full elsewhere. An idea from Aerial (aerial-tv, MIT), which does the same on low-memory TVs.
      */
     private boolean liteEffects() {
-        String e = prefs.getString("effects", "auto");
+        String e = prefs.getString("effects", "full");
         if (!e.equals("auto")) return e.equals("lite");
         ActivityManager am = getSystemService(ActivityManager.class);
         ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
@@ -981,7 +1077,7 @@ public class HomeActivity extends Activity {
 
     /** An arrow press in Auto · Full on a TV not yet judged: time the next half second of frames, while things glide. */
     private void sampleSmoothness() {
-        if (lite || prefs.contains("slow_tv") || !prefs.getString("effects", "auto").equals("auto")) return;
+        if (lite || prefs.contains("slow_tv") || !prefs.getString("effects", "full").equals("auto")) return;
         boolean running = android.os.SystemClock.uptimeMillis() < sampleUntil;
         sampleUntil = android.os.SystemClock.uptimeMillis() + 500;
         if (!running) {
@@ -1009,7 +1105,7 @@ public class HomeActivity extends Activity {
     }
 
     private String effectsLabel() {
-        String e = prefs.getString("effects", "auto");
+        String e = prefs.getString("effects", "full");
         return e.equals("full") ? "Full" : e.equals("lite") ? "Lite" : liteEffects() ? "Auto · Lite" : "Auto · Full";
     }
     /** How All apps is arranged (Talkies settings → All apps order). The dock always keeps your order. */
@@ -2520,6 +2616,10 @@ public class HomeActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         lastInput = android.os.SystemClock.uptimeMillis();
+        if (introView != null) {   // any button skips the opening animation
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) endIntro(true);
+            return true;
+        }
         int k = e.getKeyCode();
         boolean select = k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER
                 || k == KeyEvent.KEYCODE_NUMPAD_ENTER || k == KeyEvent.KEYCODE_BUTTON_A;
@@ -5064,6 +5164,7 @@ public class HomeActivity extends Activity {
         // it shows, the apps and inputs, the remote and power, and Talkies itself.
         int missing = setupMissing();
         if (missing > 0) addRow("Finish setup", missing + (missing == 1 ? " step left" : " steps left"), this::openFinishSetup, false);
+        addRow("Developer", DEV_NAME, this::showDeveloper, true);
         addMenuHeading("Look");
         final View[] look = new View[1];
         look[0] = addRow("Appearance", APPEARANCE[prefs.getInt("appearance", 0)], () -> {
@@ -5131,12 +5232,18 @@ public class HomeActivity extends Activity {
         final View[] fx = new View[1];
         fx[0] = addRow("Effects", effectsLabel(), () -> {
             String[] order = {"auto", "full", "lite"};
-            String next = order[(Arrays.asList(order).indexOf(prefs.getString("effects", "auto")) + 1) % order.length];
+            String next = order[(Arrays.asList(order).indexOf(prefs.getString("effects", "full")) + 1) % order.length];
             prefs.edit().putString("effects", next).apply();
             lite = liteEffects();
             backdrop.setLite(lite);
             updateAmbient();
             setStatus(fx[0], effectsLabel());
+        }, true);
+        final View[] intro = new View[1];
+        intro[0] = addRow("Opening animation", prefs.getBoolean("intro", true) ? "On" : "Off", () -> {
+            boolean on = !prefs.getBoolean("intro", true);
+            prefs.edit().putBoolean("intro", on).apply();
+            setStatus(intro[0], on ? "On" : "Off");
         }, true);
         final View[] ms = new View[1];
         ms[0] = addRow("RAM and storage", meters.getVisibility() == View.VISIBLE ? "Shown" : "Hidden", () -> {
@@ -5290,7 +5397,6 @@ public class HomeActivity extends Activity {
         final View[] adb = new View[1];
         adb[0] = addRow("Network debugging", "Checking…", this::openNetworkDebugging, false);
         checkNetworkDebugging(st -> { if (adb[0].isAttachedToWindow()) setStatus(adb[0], st); });
-        addRow("Developer", DEV_NAME, this::showDeveloper, true);
         addRow("About", null, this::openAbout, false);
         showMenu(350);
     }
