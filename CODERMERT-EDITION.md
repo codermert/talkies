@@ -30,7 +30,9 @@ The APK is signed with its own key, so an original Talkies on the TV has to be r
 1. Put the APK on the TV: Downloader (type the release link), a USB stick and a file manager, or
    `adb connect TV_IP:5555` then `adb install -r Talkies-codermert-1.2.8.apk`.
 2. Open Talkies. Switch on Settings → Device Preferences → Accessibility → Talkies, so Home and a restart open it.
-3. Talkies settings → Keys and location: your own free TMDB key; Weather city: your city.
+3. **codermert-edition builds:** put your free TMDB key in `tmdb_key.txt` next to the Gradle project (git
+   ignores it), run `./gradlew assembleRelease`. The key is built into the APK — no entry on the TV. GitHub
+   self-updates are off (`DISABLE_SELF_UPDATE`). Set **Weather city** on the TV if you want local weather.
 4. Optional, from a computer, once: `adb shell pm grant com.techpp.glass android.permission.WRITE_SECURE_SETTINGS`
    lets Talkies switch its own Accessibility service back on after an update.
 
@@ -38,5 +40,5 @@ The APK is signed with its own key, so an original Talkies on the TV has to be r
 
 Talkies'in 1 GB RAM'li Xiaomi Mi TV kutusu için kişisel sürümüdür. Açılış animasyonu, Popular / Upcoming / Artists
 sekmeleri, uygulama renginde arka plan parıltısı, 24 saatlik saat, Home tuşunun doğrudan Talkies'i açması, şehir seçici
-ve Developer bölümü eklenmiştir. Kurulum: APK'yı TV'ye al, eski Talkies varsa önce kaldır, Erişilebilirlik > Talkies'i aç,
-kendi TMDB anahtarını gir.
+ve Developer bölümü eklenmiştir. Kurulum: `tmdb_key.txt` ile derle, APK'yı TV'ye al, eski Talkies varsa önce kaldır,
+Erişilebilirlik > Talkies'i aç, hava için şehir seç.

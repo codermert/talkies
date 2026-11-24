@@ -261,6 +261,7 @@ public class HomeActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        Keys.ensureEmbedded(this);
         // restore-settings.sh pushed a backup: apply it before anything reads the settings.
         if (Backup.restoreIfPresent(this)) Toast.makeText(this, "Settings restored from the backup", Toast.LENGTH_LONG).show();
         else if (getIntent().getBooleanExtra("talkies_backup", false)) Backup.save(this);  // asked before Talkies was running
@@ -3712,9 +3713,13 @@ public class HomeActivity extends Activity {
         String tmdb = Keys.read(this, Keys.TMDB), area = Keys.read(this, Keys.LOCATION);
         String paste = "\n\nTip: Send from your phone (above) is easier, or the Google TV app's keyboard on your phone can paste it.";
         addRow("Send from your phone", "QR code", this::openPhonePage, true);
-        addRow("TMDB key", tmdb == null ? "Not set" : Keys.masked(tmdb), () -> askText("TMDB key",
-                "For the Trending and New picks. Free at themoviedb.org → Settings → API: the API Key or the API Read "
-                        + "Access Token." + paste, null, true, tmdb != null, text -> saveKey(Keys.TMDB, "TMDB", text, 1)), true);
+        if (Keys.hasBuiltInTmdb()) {
+            addRow("TMDB key", "Built in", () -> { }, true);
+        } else {
+            addRow("TMDB key", tmdb == null ? "Not set" : Keys.masked(tmdb), () -> askText("TMDB key",
+                    "For the Trending and New picks. Free at themoviedb.org → Settings → API: the API Key or the API Read "
+                            + "Access Token." + paste, null, true, tmdb != null, text -> saveKey(Keys.TMDB, "TMDB", text, 1)), true);
+        }
         // Coordinates pinpoint a home, so the row (and any screenshot of it) just says so; place names show as typed.
         String near = weather.autoCity();   // no location set: roughly where the internet address says
         String where = area == null ? (near == null ? "Not set" : near.isEmpty() ? "Approximate" : "Near " + near) : area.matches("[-+0-9.,\\s]+") ? "Coordinates"
@@ -4929,6 +4934,7 @@ public class HomeActivity extends Activity {
 
     /** A newer Talkies this APK can install (SelfUpdate's daily check found it), else null. */
     private String talkiesUpdate() {
+        if (BuildConfig.DISABLE_SELF_UPDATE) return null;
         return SelfUpdate.takesReleases(this) ? SelfUpdate.available(this) : null;
     }
 
@@ -4942,6 +4948,7 @@ public class HomeActivity extends Activity {
 
     /** Talkies settings → Updates (and the top of What's new): the latest version; OK checks again and installs it. */
     private void addUpdatesRow() {
+        if (BuildConfig.DISABLE_SELF_UPDATE) return;
         final View[] up = new View[1];
         up[0] = addRow("Updates", SelfUpdate.summary(this), () -> SelfUpdate.checkAndInstall(this, st -> runOnUiThread(() -> {
             if (up[0].isAttachedToWindow()) setStatus(up[0], st);
@@ -6497,7 +6504,7 @@ public class HomeActivity extends Activity {
         // A new install, Home button not set up yet: once, after the service has had time to connect.
         if (zone != Z_MENU && welcomeDue()) root.postDelayed(this::showWelcomeCard, 2500);
         // Once a day: is there a newer Talkies? Said once per version.
-        background.execute(() -> {
+        if (!BuildConfig.DISABLE_SELF_UPDATE) background.execute(() -> {
             boolean news = SelfUpdate.checkIfStale(this);
             runOnUiThread(() -> {
                 onUpdates();

@@ -1,15 +1,28 @@
 plugins { id 'com.android.application' }
 
+def embeddedTmdbKey = ""
+def tmdbKeyFile = rootProject.file('tmdb_key.txt')
+if (tmdbKeyFile.exists()) {
+    embeddedTmdbKey = tmdbKeyFile.getText('UTF-8').trim()
+            .replace('\\', '\\\\').replace('"', '\\"')
+}
+
 android {
     namespace 'com.techpp.glass'
     compileSdk 35
+    buildFeatures {
+        buildConfig true
+    }
     defaultConfig {
         applicationId 'com.techpp.glass'
         minSdk 26          // Android 8.0, the first with home-screen channels (TvContract preview programs)
         targetSdk 35
         // Each release: versionName as in CHANGELOG.md, versionCode one higher (Android installs only higher codes as updates).
-        versionCode 23
+        versionCode 24
         versionName '1.2.8'
+        buildConfigField 'String', 'TMDB_KEY', "\"${embeddedTmdbKey}\""
+        // codermert TV builds: no GitHub update checks, bell, or self-install.
+        buildConfigField 'boolean', 'DISABLE_SELF_UPDATE', 'true'
     }
     // The project's release key, when this computer has it (release.properties, never in git): APKs signed with it
     // can update each other from Talkies settings → Updates. Anyone else's build signs with their own debug key.
