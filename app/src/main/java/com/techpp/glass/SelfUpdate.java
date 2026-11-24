@@ -61,8 +61,13 @@ final class SelfUpdate {
 
     private static SharedPreferences prefs(Context c) { return c.getSharedPreferences("updates", Context.MODE_PRIVATE); }
 
+    private static boolean disabled(Context c) {
+        return BuildConfig.DISABLE_SELF_UPDATE;
+    }
+
     /** This app is the APK from the releases (the project's key), so it can install the next one. */
     static boolean takesReleases(Context c) {
+        if (disabled(c)) return false;
         if (releaseKey == null) {
             try {
                 releaseKey = RELEASE_CERT.equals(cert(c.getPackageManager().getPackageInfo(c.getPackageName(), PackageManager.GET_SIGNATURES)));
@@ -89,6 +94,7 @@ final class SelfUpdate {
 
     /** The row's status: "0.4.2 · Up to date", "0.4.3 is out · OK installs", … */
     static String summary(Context c) {
+        if (disabled(c)) return installed(c) + "  ·  Updates off";
         String mine = installed(c), v = available(c);
         if (v == null) return mine + "  ·  " + (prefs(c).contains("checked") ? "Up to date" : "Check now");
         if (!takesReleases(c)) return v + " is out  ·  build it again";
@@ -97,6 +103,7 @@ final class SelfUpdate {
 
     /** The daily check (no download): true when it found a newer version it hadn't mentioned yet. Background thread. */
     static boolean checkIfStale(Context c) {
+        if (disabled(c)) return false;
         if (System.currentTimeMillis() - prefs(c).getLong("checked", 0) < DAY) return false;
         try {
             latest(c);
@@ -112,6 +119,10 @@ final class SelfUpdate {
 
     /** OK on the row: check now, and if there's a newer release (and this app takes them), download and install it. */
     static void checkAndInstall(Context c, Listener l) {
+        if (disabled(c)) {
+            if (l != null) l.changed(summary(c));
+            return;
+        }
         waiting = l;
         new Thread(() -> {
             try {

@@ -196,12 +196,7 @@ final class Trending {
     void setPicksFrom(String from) { prefs.edit().putString("picks_from", from).apply(); }
 
     String key() {
-        try (InputStream in = new FileInputStream(keyFile())) {
-            String k = new String(readAll(in), StandardCharsets.UTF_8).trim();
-            return k.isEmpty() ? null : k;
-        } catch (IOException e) {
-            return null;
-        }
+        return Keys.read(ctx, Keys.TMDB);
     }
 
     /** Saved picks for one tab whose app is still installed and whose backdrop is on disk. */
